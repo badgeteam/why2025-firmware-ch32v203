@@ -1,0 +1,19 @@
+{
+    "files.associations": {
+        "ch32v003fun.h": "c",
+        "compare": "c",
+        "cstdint": "c",
+        "chrono": "c",
+        "functional": "c",
+        "charconv": "c",
+        "optional": "c",
+        "format": "c",
+        "ratio": "c",
+        "system_error": "c",
+        "array": "c",
+        "tuple": "c",
+        "type_traits": "c",
+        "utility": "c",
+        "*.tcc": "c"
+    }
+}

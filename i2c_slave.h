@@ -107,6 +107,16 @@ void SetupI2CSlave(uint8_t address, volatile uint8_t* registers, uint8_t size, i
     I2C1->CTLR1 |= I2C_CTLR1_ACK;
 }
 
+void LockI2CSlave(bool lock) {
+    if (lock) {
+        NVIC_DisableIRQ(I2C1_EV_IRQn); // Event interrupt
+        NVIC_DisableIRQ(I2C1_ER_IRQn); // Error interrupt
+    } else {
+        NVIC_EnableIRQ(I2C1_EV_IRQn); // Event interrupt
+        NVIC_EnableIRQ(I2C1_ER_IRQn); // Error interrupt
+    }
+}
+
 void SetupSecondaryI2CSlave(uint8_t address, volatile uint8_t* registers, uint8_t size, i2c_write_callback_t write_callback, i2c_read_callback_t read_callback, bool read_only) {
     if (address > 0) {
         I2C1->OADDR2 = (address << 1) | 1;
