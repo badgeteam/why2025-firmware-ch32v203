@@ -1,0 +1,4 @@
+#pragma once
+
+//#define FUNCONF_USE_DEBUGPRINTF 0
+//#define FUNCONF_DEBUGPRINTF_TIMEOUT 0
