@@ -636,6 +636,6 @@ int main() {
             LockI2CSlave(false);
         }
 
-        funDigitalWrite(pin_interrupt, (keyboard_interrupt | input_interrupt) ? FUN_HIGH : FUN_LOW); // Update interrupt pin state
+        funDigitalWrite(pin_interrupt, (keyboard_interrupt | input_interrupt) ? FUN_LOW : FUN_HIGH); // Update interrupt pin state
     }
 }
