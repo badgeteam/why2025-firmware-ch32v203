@@ -14,6 +14,16 @@
         "tuple": "c",
         "type_traits": "c",
         "utility": "c",
-        "*.tcc": "c"
+        "*.tcc": "c",
+        "stdio.h": "c",
+        "*.ipp": "c",
+        "hash_map": "c",
+        "bitset": "c",
+        "string_view": "c",
+        "initializer_list": "c",
+        "ranges": "c",
+        "span": "c",
+        "valarray": "c",
+        "string": "c"
     }
 }

@@ -1,29 +1,43 @@
-// WHY2025 coprocessor firmware
+// Tanmatsu coprocessor firmware
 // Copyright Nicolai Electronics 2024
 
 #include "ch32v003fun.h"
 #include "i2c_slave.h"
+#include "i2c_master.h"
 #include <stdio.h>
 #include <stdbool.h>
+#include <string.h>
 
 // Board revision
 #define HW_REV 1
 
 // Firmware version
-#define FW_VERSION 1
+#define FW_VERSION 3
+
+#define OVERRIDE_C6 false
+#define HARDWARE_REV 2 // 1 for prototype 1, 2 for prototype 2
 
 // Pins
 const uint8_t keyboard_rows[] = {PA8, PA9, PA10, PA4, PA3, PA1, PA6, PA5, PA2};
 const uint8_t keyboard_columns[] = {PB14, PB12, PB1, PA7, PB15, PB13, PB2, PB0};
 const uint8_t pin_c6_enable = PB8;
-const uint8_t pin_c6_boot = PB9;
+const uint8_t pin_c6_boot = (HARDWARE_REV > 1 ? PD1 : PB9);
 const uint8_t pin_display_backlight = PB4; // Note: change PWM timer configuration too when changing this pin
 const uint8_t pin_keyboard_backlight = PB3; // Note: change PWM timer configuration too when changing this pin
 const uint8_t pin_interrupt = PA0;
 const uint8_t pin_sdcard_detect = PA15;
 const uint8_t pin_headphone_detect = PB5;
 const uint8_t pin_amplifier_enable = PD0;
-//const uint8_t pin_power_on = PC13;
+//const uint8_t pin_power_out = PC13; // Output to power button (for powering on using the RTC alarm)
+const uint8_t pin_sda = PB7; // Uses hardware I2C peripheral
+const uint8_t pin_scl = PB6; // Uses hardware I2C peripheral
+
+#if HARDWARE_REV > 1
+const uint8_t pin_camera = PA11;
+const uint8_t pin_power_in = PA12; // Input from power button
+const uint8_t pin_pm_sda = PB11;
+const uint8_t pin_pm_scl = PB10;
+#endif
 
 // Configuration
 const uint16_t timer2_pwm_cycle_width = 255; // Amount of brightness steps for keyboard backlight
@@ -51,7 +65,7 @@ typedef enum {
     I2C_REG_KEYBOARD_BACKLIGHT_0, // LSB
     I2C_REG_KEYBOARD_BACKLIGHT_1, // MSB
     I2C_REG_INPUT, // SD card detect (bit 0) & headphone detect (bit 1)
-    I2C_REG_AMPLIFIER_ENABLE,
+    I2C_REG_OUTPUT,
     I2C_REG_RADIO_CONTROL,
     I2C_REG_RTC_VALUE_0, // LSB
     I2C_REG_RTC_VALUE_1,
@@ -184,6 +198,10 @@ bool input_step() {
     value |= (!funDigitalRead(pin_sdcard_detect)) << 0;
     value |= funDigitalRead(pin_headphone_detect) << 1;
 
+#if HARDWARE_REV > 1
+    value |= funDigitalRead(pin_power_in) << 2;
+#endif
+
     i2c_registers[I2C_REG_INPUT] = value;
 
     bool changed = previous_value != value;
@@ -211,7 +229,7 @@ void timer2_init() {
         RCC->APB1PRSTR |= RCC_APB1Periph_TIM2;
         RCC->APB1PRSTR &= ~RCC_APB1Periph_TIM2;
 
-        TIM2->PSC = 0x0100; // Clock prescaler divider
+        TIM2->PSC = 0x2000; // Clock prescaler divider
         TIM2->ATRLR = timer2_pwm_cycle_width; // Total PWM cycle width
 
         TIM2->CHCTLR1 |= TIM_OC2M_2 | TIM_OC2M_1 | TIM_OC2PE; // Enable channel 2
@@ -242,7 +260,7 @@ void timer3_init() {
         RCC->APB1PRSTR |= RCC_APB1Periph_TIM3;
         RCC->APB1PRSTR &= ~RCC_APB1Periph_TIM3;
 
-        TIM3->PSC = 0x0100; // Clock prescaler divider
+        TIM3->PSC = 0x2000; // Clock prescaler divider
         TIM3->ATRLR = timer3_pwm_cycle_width; // Total PWM cycle width
 
         TIM3->CHCTLR1 |= TIM_OC1M_2 | TIM_OC1M_1 | TIM_OC1PE; // Enable channel 1
@@ -251,7 +269,7 @@ void timer3_init() {
 
         TIM3->CCER |= TIM_CC1E | TIM_CC1P; // Enable channel 1 output, positive polarity
 
-        timer3_set(0); // Load default target PWM dutycycle
+        timer3_set(255); // Load default target PWM dutycycle
 
         TIM3->CTLR1 |= TIM_CEN; // Enable timer
 }
@@ -496,12 +514,17 @@ void i2c_write_cb(uint8_t reg, uint8_t length) {
             case I2C_REG_KEYBOARD_BACKLIGHT_1:
                 timer2_set(i2c_registers[I2C_REG_KEYBOARD_BACKLIGHT_0] + (i2c_registers[I2C_REG_KEYBOARD_BACKLIGHT_1] << 8));
                 break;
-            case I2C_REG_AMPLIFIER_ENABLE:
-                funDigitalWrite(pin_amplifier_enable, i2c_registers[I2C_REG_AMPLIFIER_ENABLE] & 1);
+            case I2C_REG_OUTPUT:
+                funDigitalWrite(pin_amplifier_enable, i2c_registers[I2C_REG_OUTPUT] & 1);
+#if HARDWARE_REV > 1
+                funDigitalWrite(pin_camera, i2c_registers[I2C_REG_OUTPUT] & 2);
+#endif
                 break;
             case I2C_REG_RADIO_CONTROL:
+#if OVERRIDE_C6 == false // Ignore radio control register if radio override is active
                 funDigitalWrite(pin_c6_enable, ((i2c_registers[I2C_REG_RADIO_CONTROL] >> 0) & 1) ? FUN_HIGH : FUN_LOW);
                 funDigitalWrite(pin_c6_boot, ((i2c_registers[I2C_REG_RADIO_CONTROL] >> 1) & 1) ? FUN_HIGH : FUN_LOW);
+#endif
                 break;
             case I2C_REG_RTC_VALUE_0:
                 new_rtc_value &= 0xFFFFFF00;
@@ -554,6 +577,330 @@ void i2c_read_cb(uint8_t reg) {
     }
 }
 
+// ---- PMIC ----
+
+// REG00
+void pmic_set_input_current_limit(uint16_t current, bool enable_ilim_pin) {
+    const uint8_t reg = 0x00;
+    uint8_t value = 0x00;
+
+    if (current < 100) { // Minimum current is 100 mA
+        current = 100;
+    }
+    current -= 100; // Offset is 100 mA
+
+    if (enable_ilim_pin) {
+        value |= 0b1000000; // Enable ILIM pin
+    }
+    if (current >= 1600) {
+        current -= 1600;
+        value |= 0b100000; // Add 1600 mA
+    }
+    if (current >= 800) {
+        current -= 800;
+        value |= 0b10000; // Add 800 mA
+    }
+    if (current >= 400) {
+        current -= 400;
+        value |= 0b1000; // Add 400 mA
+    }
+    if (current >= 200) {
+        current -= 200;
+        value |= 0b100; // Add 200 mA
+    }
+    if (current >= 100) {
+        current -= 100;
+        value |= 0b10; // Add 100 mA
+    }
+    if (current >= 50) {
+        current -= 50;
+        value |= 0b1; // Add 50 mA
+    }
+
+    pm_i2c_write_reg(0x6a, reg, &value, 1);
+}
+
+// REG02
+void pmic_adc_control(bool enable, bool continuous) {
+    const uint8_t reg = 0x02;
+    uint8_t value = 0;
+    pm_i2c_read_reg(0x6a, reg, &value, 1);
+    if (enable) {
+        value |= (1 << 7);
+    } else {
+        value &= ~(1 << 7);
+    }
+    if (continuous) {
+        value |= (1 << 6);
+    } else {
+        value &= ~(1 << 6);
+    }
+    pm_i2c_write_reg(0x6a, reg, &value, 1);
+}
+
+void pmic_ico(bool enable) {
+    const uint8_t reg = 0x02;
+    uint8_t value = 0;
+    pm_i2c_read_reg(0x6a, reg, &value, 1);
+    if (enable) {
+        value |= (1 << 4);
+    } else {
+        value &= ~(1 << 4);
+    }
+    pm_i2c_write_reg(0x6a, reg, &value, 1);
+}
+
+// REG03
+void pmic_otg(bool enable) {
+    const uint8_t reg = 0x03;
+    uint8_t value = 0;
+    pm_i2c_read_reg(0x6a, reg, &value, 1);
+    if (enable) {
+        value |= (1 << 5);
+    } else {
+        value &= ~(1 << 5);
+    }
+    pm_i2c_write_reg(0x6a, reg, &value, 1);
+}
+
+
+void pmic_set_minimum_system_voltage_limit(uint16_t voltage) {
+    // Voltage in mV
+    const uint8_t reg = 0x03;
+    uint8_t value = 0;
+    pm_i2c_read_reg(0x6a, reg, &value, 1);
+
+    value &= 0b11110001; // Mask
+
+    value |= 0b10000000; // Enable battery load
+
+    if (voltage < 3000) { // Minimum voltage is 3V
+        voltage = 3000;
+    }
+    voltage -= 3000; // Offset is 3V
+
+    if (voltage >= 400) {
+        voltage -= 400;
+        value |= (0b100) << 1; // Add 0.4V
+    }
+    if (voltage >= 200) {
+        voltage -= 200;
+        value |= (0b010) << 1; // Add 0.2V
+    }
+    if (voltage >= 100) {
+        voltage -= 100;
+        value |= (0b001) << 1; // Add 0.1V
+    }
+
+    pm_i2c_write_reg(0x6a, reg, &value, 1);
+}
+
+// REG04
+
+void pmic_set_fast_charge_current(uint16_t current, bool en_pumpx) {
+    const uint8_t reg = 0x04;
+    uint8_t value = 0;
+
+    if (en_pumpx) {
+        value |= (1 << 7);
+    }
+
+    if (current >= 4096) {
+        current -= 4096;
+        value |= (1 << 6); // Add 4096mA
+    }
+    if (current >= 2048) {
+        current -= 2048;
+        value |= (1 << 5); // Add 2048mA
+    }
+    if (current >= 1024) {
+        current -= 1024;
+        value |= (1 << 4); // Add 1024mA
+    }
+    if (current >= 512) {
+        current -= 512;
+        value |= (1 << 3); // Add 512mA
+    }
+    if (current >= 256) {
+        current -= 256;
+        value |= (1 << 2); // Add 256mA
+    }
+    if (current >= 128) {
+        current -= 128;
+        value |= (1 << 1); // Add 128mA
+    }
+    if (current >= 64) {
+        current -= 64;
+        value |= (1 << 0); // Add 64mA
+    }
+
+    pm_i2c_write_reg(0x6a, reg, &value, 1);
+}
+
+// REG06
+void pmic_battery_threshold(uint16_t voltage_limit, bool batlowv, bool vrechg) {
+    const uint8_t reg = 0x06;
+    uint8_t value = 0;
+
+    if (voltage_limit < 3840) {
+        voltage_limit = 3840;
+    }
+    voltage_limit -= 3840; // Offset
+    if (voltage_limit > 512) {
+        voltage_limit -= 512;
+        value |= (1 << 7); // Add 512mA
+    }
+    if (voltage_limit > 256) {
+        voltage_limit -= 256;
+        value |= (1 << 6); // Add 256mA
+    }
+    if (voltage_limit > 128) {
+        voltage_limit -= 128;
+        value |= (1 << 5); // Add 128mA
+    }
+    if (voltage_limit > 64) {
+        voltage_limit -= 64;
+        value |= (1 << 4); // Add 64mA
+    }
+    if (voltage_limit > 32) {
+        voltage_limit -= 32;
+        value |= (1 << 3); // Add 32mA
+    }
+    if (voltage_limit > 16) {
+        voltage_limit -= 16;
+        value |= (1 << 2); // Add 16mA
+    }
+    if (batlowv) {
+        value |= (1 << 1); // Battery precharge to fast charge threshold: 1 is 3.0v (default), 0 is 2.8v
+    }
+    if (vrechg) {
+        value |= (1 << 0); // Battery recharge threshold offset: 1 is 200mV below VREG, 0 is 100mV below VREG (default)
+    }
+    pm_i2c_write_reg(0x6a, reg, &value, 1);
+}
+
+// REG07
+void pmic_watchdog(uint8_t watchdog_setting) {
+    const uint8_t reg = 0x07;
+    uint8_t value = 0x00;
+    pm_i2c_read_reg(0x6a, reg, &value, 1);
+    value &= ~(0b00110000);
+    value |= (watchdog_setting & 3) << 4; // Watchdog
+    pm_i2c_write_reg(0x6a, reg, &value, 1);
+}
+
+// REG09
+void pmic_power_on() {
+    pmic_watchdog(0);
+    const uint8_t reg = 0x09;
+    uint8_t value = 0x00;
+    pm_i2c_read_reg(0x6a, reg, &value, 1);
+    value &= (~1 << 5); // Clear BATFET_DIS bit
+    pm_i2c_write_reg(0x6a, reg, &value, 1);
+}
+
+void pmic_power_off() {
+    pmic_watchdog(0);
+    const uint8_t reg = 0x09;
+    uint8_t value = 0x00;
+    pm_i2c_read_reg(0x6a, reg, &value, 1);
+    value |= (1 << 5); // Set BATFET_DIS bit
+    pm_i2c_write_reg(0x6a, reg, &value, 1);
+}
+
+// REG0C
+void pmic_read_faults() {
+    const uint8_t reg = 0x0C;
+    uint8_t value = 0;
+    pm_i2c_read_reg(0x6a, reg, &value, 1);
+
+    bool watchdog = (value >> 7) & 1;
+    bool boost = (value >> 6) & 1;
+
+    bool chrg_input = ((value >> 4) & 3) == 0b01;
+    bool chrg_thermal = ((value >> 4) & 3) == 0b10;
+    bool chrg_safety = ((value >> 4) & 3) == 0b11;
+
+    bool batt_ovp = (value >> 3) & 1;
+
+    bool ntc_cold = ((value >> 0) & 3) == 0b01;
+    bool ntc_hot = ((value >> 0) & 3) == 0b10;
+    bool ntc_boost = (value >> 2) & 1;
+
+    printf("Faults: %s%s%s%s%s%s%s%s%s (%02x)\r\n", watchdog?"WDOG ":"", boost?"BOOST ":"", chrg_input?"CHRG-INPUT ":"", chrg_thermal?"CHRG-THERMAL ":"", chrg_safety ? "CHRG-SAFETY ":"", batt_ovp ? "BATT-OVP ":"", ntc_cold ? "NTC-COLD ":"", ntc_hot ? "NTC-HOT ":"", ntc_boost ? "(boost) ":(ntc_hot || ntc_cold ? "(buck) ":""), value);
+}
+
+void pmic_vbus_test() {
+    uint8_t reg0b;
+    pm_i2c_read_reg(0x6a, 0x0b, &reg0b, 1);
+    printf("REG0B: %02x\r\n", reg0b);
+}
+
+// REG0E
+void pmic_adc_test() {
+    const uint8_t reg = 0x0E;
+    uint8_t buffer[5] = {0x00, 0x00, 0x00, 0x00, 0x00};
+    pm_i2c_read_reg(0x6a, reg, buffer, sizeof(buffer));
+
+    // REG0E
+    bool treg = (buffer[0] >> 7) & 1;
+    uint16_t vbatt = 2304;
+    if ((buffer[0] >> 6) & 1) vbatt += 1280;
+    if ((buffer[0] >> 5) & 1) vbatt += 640;
+    if ((buffer[0] >> 4) & 1) vbatt += 320;
+    if ((buffer[0] >> 3) & 1) vbatt += 160;
+    if ((buffer[0] >> 2) & 1) vbatt += 80;
+    if ((buffer[0] >> 1) & 1) vbatt += 40;
+    if ((buffer[0] >> 0) & 1) vbatt += 20;
+
+    // REG0F
+    uint16_t vsys = 2304;
+    if ((buffer[1] >> 6) & 1) vsys += 1280;
+    if ((buffer[1] >> 5) & 1) vsys += 640;
+    if ((buffer[1] >> 4) & 1) vsys += 320;
+    if ((buffer[1] >> 3) & 1) vsys += 160;
+    if ((buffer[1] >> 2) & 1) vsys += 80;
+    if ((buffer[1] >> 1) & 1) vsys += 40;
+    if ((buffer[1] >> 0) & 1) vsys += 20;
+
+    // REG10
+    uint32_t ts = 21;
+    if ((buffer[2] >> 6) & 1) ts += 29760;
+    if ((buffer[2] >> 5) & 1) ts += 14880;
+    if ((buffer[2] >> 4) & 1) ts += 7440;
+    if ((buffer[2] >> 3) & 1) ts += 3720;
+    if ((buffer[2] >> 2) & 1) ts += 1860;
+    if ((buffer[2] >> 1) & 1) ts += 930;
+    if ((buffer[2] >> 0) & 1) ts += 465;
+
+    // REG11
+    bool vbus_attached = (buffer[3] >> 7) & 1;
+    uint16_t vbus = 2304;
+    if ((buffer[3] >> 6) & 1) vbus += 6400;
+    if ((buffer[3] >> 5) & 1) vbus += 3200;
+    if ((buffer[3] >> 4) & 1) vbus += 1600;
+    if ((buffer[3] >> 3) & 1) vbus += 800;
+    if ((buffer[3] >> 2) & 1) vbus += 400;
+    if ((buffer[3] >> 1) & 1) vbus += 200;
+    if ((buffer[3] >> 0) & 1) vbus += 100;
+
+    // REG12
+    uint16_t charge_current = 0;
+    if ((buffer[4] >> 6) & 1) charge_current += 3200;
+    if ((buffer[4] >> 5) & 1) charge_current += 1600;
+    if ((buffer[4] >> 4) & 1) charge_current += 800;
+    if ((buffer[4] >> 3) & 1) charge_current += 400;
+    if ((buffer[4] >> 2) & 1) charge_current += 200;
+    if ((buffer[4] >> 1) & 1) charge_current += 100;
+    if ((buffer[4] >> 0) & 1) charge_current += 50;
+
+    if (!vbus_attached && vbus == 2304) {
+        vbus = 0;
+    }
+
+    printf("Treg: %s, Vbatt: %u mV, Vsys: %u mV, TS %lu%%, Vbus: %s %u mV, Ichrg: %u mA (%02x %02x %02x %02x %02x)\r\n", treg ? "Y" : "N", vbatt, vsys, ts / 100, vbus_attached ? "Y" : "N", vbus, charge_current, buffer[0], buffer[1], buffer[2], buffer[3], buffer[4]);
+}
+
 // Entry point
 int main() {
     SystemInit();
@@ -570,15 +917,34 @@ int main() {
     }
 
     // Initialize I2C slave
-    funPinMode(PB7, GPIO_CFGLR_OUT_10Mhz_AF_OD); // SDA
-    funPinMode(PB6, GPIO_CFGLR_OUT_10Mhz_AF_OD); // SCL
+    funPinMode(pin_sda, GPIO_CFGLR_OUT_10Mhz_AF_OD); // SDA
+    funPinMode(pin_scl, GPIO_CFGLR_OUT_10Mhz_AF_OD); // SCL
     SetupI2CSlave(0x5f, i2c_registers, sizeof(i2c_registers), i2c_write_cb, i2c_read_cb, false);
+
+    // Initialize I2C master
+#if HARDWARE_REV > 1
+    funPinMode(pin_pm_sda, GPIO_CFGLR_OUT_10Mhz_AF_OD); // SDA
+    funPinMode(pin_pm_scl, GPIO_CFGLR_OUT_10Mhz_AF_OD); // SCL
+    SetupI2CMaster();
+    pmic_power_on(); // Enable battery
+    pmic_set_input_current_limit(3250, false);
+    pmic_set_minimum_system_voltage_limit(3000);
+    pmic_watchdog(0);
+    pmic_adc_control(true, true);
+    pmic_ico(false);
+    pmic_battery_threshold(4200, true, false);
+    pmic_set_fast_charge_current(512, false);
+#endif
 
     // ESP32-C6
     funPinMode(pin_c6_enable, GPIO_Speed_10MHz | GPIO_CNF_OUT_PP);
     funDigitalWrite(pin_c6_enable, FUN_LOW);
-    funPinMode(pin_c6_boot, GPIO_Speed_10MHz | GPIO_CNF_OUT_PP);
-    funDigitalWrite(pin_c6_boot, FUN_LOW);
+    funPinMode(pin_c6_boot, GPIO_Speed_10MHz | GPIO_CNF_OUT_OD);
+    funDigitalWrite(pin_c6_boot, FUN_HIGH);
+
+#if OVERRIDE_C6
+    funDigitalWrite(pin_c6_enable, FUN_HIGH); // Turn on radio
+#endif
 
     // Display backlight
     timer3_init(); // Use timer 3 channel 1 as PWM output for controlling display backlight
@@ -597,6 +963,8 @@ int main() {
     funPinMode(pin_headphone_detect, GPIO_Speed_In | GPIO_CNF_IN_FLOATING);
 
     // Amplifier enable
+    AFIO->PCFR1 |= AFIO_PCFR1_PD01_REMAP;
+
     funPinMode(pin_amplifier_enable, GPIO_Speed_10MHz | GPIO_CNF_OUT_PP);
     funDigitalWrite(pin_amplifier_enable, FUN_LOW);
 
@@ -605,6 +973,11 @@ int main() {
 
     // Backup registers
     bkp_read_all();
+
+    bool power_button_latch = false;
+    uint8_t power_button_counter = 0;
+
+    uint16_t backlight_fade_value = 0;
 
     while (1) {
         i2c_registers[I2C_REG_FW_VERSION_0] = (FW_VERSION     ) & 0xFF;
@@ -622,6 +995,16 @@ int main() {
         if (now - input_scan_previous >= input_scan_interval * DELAY_MS_TIME) {
             input_scan_previous = now;
             input_interrupt |= input_step(); // Scans all inputs
+
+            if (!funDigitalRead(pin_power_in)) {
+                if (power_button_latch && power_button_counter > 500 / input_scan_interval) {
+                    pmic_power_off();
+                }
+                power_button_counter++;
+            } else {
+                power_button_latch = true;
+                power_button_counter = 0;
+            }
         }
 
         static uint32_t rtc_previous = 0;
@@ -635,6 +1018,24 @@ int main() {
             i2c_registers[I2C_REG_RTC_VALUE_3] = (value >> 24) & 0xFF;
             LockI2CSlave(false);
         }
+
+        /*static uint32_t bl_previous = 0;
+        if (now - bl_previous >= 20 * DELAY_MS_TIME) {
+            bl_previous = now;
+            if (backlight_fade_value < timer3_pwm_cycle_width) {
+                timer3_set(backlight_fade_value);
+                backlight_fade_value++;
+            }
+        }*/
+
+        /*static uint32_t pmic_previous = 0;
+        if (now - pmic_previous >= 500 * DELAY_MS_TIME) {
+            pmic_previous = now;
+            printf("\r\n");
+            pmic_read_faults();
+            pmic_adc_test();
+            pmic_vbus_test();
+        }*/
 
         funDigitalWrite(pin_interrupt, (keyboard_interrupt | input_interrupt) ? FUN_LOW : FUN_HIGH); // Update interrupt pin state
     }
