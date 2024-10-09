@@ -155,6 +155,8 @@ typedef enum {
     I2C_REG_BACKUP_81,
     I2C_REG_BACKUP_82,
     I2C_REG_BACKUP_83,
+    I2C_REG_PMIC_BATTERY_CONTROL,
+    I2C_REG_PMIC_BATTERY_STATUS,
     I2C_REG_LAST, // End of list marker
 } i2c_register_t;
 
@@ -651,7 +653,7 @@ void pmic_ico(bool enable) {
 }
 
 // REG03
-void pmic_otg(bool enable) {
+void pmic_otg_config(bool enable) {
     const uint8_t reg = 0x03;
     uint8_t value = 0;
     pm_i2c_read_reg(0x6a, reg, &value, 1);
@@ -663,6 +665,29 @@ void pmic_otg(bool enable) {
     pm_i2c_write_reg(0x6a, reg, &value, 1);
 }
 
+void pmic_chg_config(bool enable) {
+    const uint8_t reg = 0x03;
+    uint8_t value = 0;
+    pm_i2c_read_reg(0x6a, reg, &value, 1);
+    if (enable) {
+        value |= (1 << 4);
+    } else {
+        value &= ~(1 << 4);
+    }
+    pm_i2c_write_reg(0x6a, reg, &value, 1);
+}
+
+void pmic_batt_load_config(bool enable) {
+    const uint8_t reg = 0x03;
+    uint8_t value = 0;
+    pm_i2c_read_reg(0x6a, reg, &value, 1);
+    if (enable) {
+        value |= (1 << 7);
+    } else {
+        value &= ~(1 << 7);
+    }
+    pm_i2c_write_reg(0x6a, reg, &value, 1);
+}
 
 void pmic_set_minimum_system_voltage_limit(uint16_t voltage) {
     // Voltage in mV
@@ -808,35 +833,70 @@ void pmic_power_off() {
     pm_i2c_write_reg(0x6a, reg, &value, 1);
 }
 
+typedef struct pmic_faults {
+    bool watchdog;
+    bool boost;
+    bool chrg_input;
+    bool chrg_thermal;
+    bool chrg_safety;
+    bool batt_ovp;
+    bool ntc_cold;
+    bool ntc_hot;
+    bool ntc_boost;
+} pmic_faults_t;
+
 // REG0C
-void pmic_read_faults() {
+void pmic_read_faults(pmic_faults_t* faults) {
     const uint8_t reg = 0x0C;
     uint8_t value = 0;
     pm_i2c_read_reg(0x6a, reg, &value, 1);
-
-    bool watchdog = (value >> 7) & 1;
-    bool boost = (value >> 6) & 1;
-
-    bool chrg_input = ((value >> 4) & 3) == 0b01;
-    bool chrg_thermal = ((value >> 4) & 3) == 0b10;
-    bool chrg_safety = ((value >> 4) & 3) == 0b11;
-
-    bool batt_ovp = (value >> 3) & 1;
-
-    bool ntc_cold = ((value >> 0) & 3) == 0b01;
-    bool ntc_hot = ((value >> 0) & 3) == 0b10;
-    bool ntc_boost = (value >> 2) & 1;
-
-    printf("Faults: %s%s%s%s%s%s%s%s%s (%02x)\r\n", watchdog?"WDOG ":"", boost?"BOOST ":"", chrg_input?"CHRG-INPUT ":"", chrg_thermal?"CHRG-THERMAL ":"", chrg_safety ? "CHRG-SAFETY ":"", batt_ovp ? "BATT-OVP ":"", ntc_cold ? "NTC-COLD ":"", ntc_hot ? "NTC-HOT ":"", ntc_boost ? "(boost) ":(ntc_hot || ntc_cold ? "(buck) ":""), value);
+    faults->watchdog = (value >> 7) & 1;
+    faults->boost = (value >> 6) & 1;
+    faults->chrg_input = ((value >> 4) & 3) == 0b01;
+    faults->chrg_thermal = ((value >> 4) & 3) == 0b10;
+    faults->chrg_safety = ((value >> 4) & 3) == 0b11;
+    faults->batt_ovp = (value >> 3) & 1;
+    faults->ntc_cold = ((value >> 0) & 3) == 0b01;
+    faults->ntc_hot = ((value >> 0) & 3) == 0b10;
+    faults->ntc_boost = (value >> 2) & 1;
 }
 
 void pmic_vbus_test() {
     uint8_t reg0b;
     pm_i2c_read_reg(0x6a, 0x0b, &reg0b, 1);
-    printf("REG0B: %02x\r\n", reg0b);
+    //printf("REG0B: %02x\r\n", reg0b);
+}
+
+void pmic_vbus_attached(bool* attached) {
+    const uint8_t reg = 0x11;
+    uint8_t value;
+    pm_i2c_read_reg(0x6a, reg, &value, 1);
+    *attached = (value >> 7) & 1;
+    //printf("REG11: %02x = %u\r\n", value, *attached);
 }
 
 // REG0E
+void pmic_adc_read_vbatt(uint16_t* vbatt, bool* treg) {
+    const uint8_t reg = 0x0E;
+    uint8_t value;
+    pm_i2c_read_reg(0x6a, reg, &value, 1);
+
+    // REG0E
+    if (treg != NULL) {
+        *treg = (value >> 7) & 1;
+    }
+    if (vbatt != NULL) {
+    *vbatt = 2304;
+        if ((value >> 6) & 1) *vbatt += 1280;
+        if ((value >> 5) & 1) *vbatt += 640;
+        if ((value >> 4) & 1) *vbatt += 320;
+        if ((value >> 3) & 1) *vbatt += 160;
+        if ((value >> 2) & 1) *vbatt += 80;
+        if ((value >> 1) & 1) *vbatt += 40;
+        if ((value >> 0) & 1) *vbatt += 20;
+    }
+}
+
 void pmic_adc_test() {
     const uint8_t reg = 0x0E;
     uint8_t buffer[5] = {0x00, 0x00, 0x00, 0x00, 0x00};
@@ -898,7 +958,27 @@ void pmic_adc_test() {
         vbus = 0;
     }
 
-    printf("Treg: %s, Vbatt: %u mV, Vsys: %u mV, TS %lu%%, Vbus: %s %u mV, Ichrg: %u mA (%02x %02x %02x %02x %02x)\r\n", treg ? "Y" : "N", vbatt, vsys, ts / 100, vbus_attached ? "Y" : "N", vbus, charge_current, buffer[0], buffer[1], buffer[2], buffer[3], buffer[4]);
+    //printf("Treg: %s, Vbatt: %u mV, Vsys: %u mV, TS %lu%%, Vbus: %s %u mV, Ichrg: %u mA (%02x %02x %02x %02x %02x)\r\n", treg ? "Y" : "N", vbatt, vsys, ts / 100, vbus_attached ? "Y" : "N", vbus, charge_current, buffer[0], buffer[1], buffer[2], buffer[3], buffer[4]);
+}
+
+void pmic_battery_attached(bool* battery_attached, bool detect_empty_battery) {
+    *battery_attached = false;
+
+    // Algorithm 1: detect battery with normal voltage
+    pmic_batt_load_config(true); // Apply 30mA load on battery
+    Delay_Ms(5);
+    uint16_t vbatt = 0;
+    pmic_adc_read_vbatt(&vbatt, NULL);
+    pmic_batt_load_config(false); // Disable 30mA load on battery
+    if (vbatt >= 3000) {
+        *battery_attached = true;
+        return;
+    }
+
+    // Algorithm 2: detect empty battery
+    if (detect_empty_battery) {
+        //to-do
+    }
 }
 
 // Entry point
@@ -928,7 +1008,10 @@ int main() {
     SetupI2CMaster();
     pmic_power_on(); // Enable battery
     pmic_set_input_current_limit(3250, false);
-    pmic_set_minimum_system_voltage_limit(3000);
+    pmic_otg_config(false); // Disable OTG booster
+    pmic_chg_config(false); // Disable battery charging
+    pmic_batt_load_config(false); // Disable 30mA load on battery
+    pmic_set_minimum_system_voltage_limit(3500); // 3.5v (default)
     pmic_watchdog(0);
     pmic_adc_control(true, true);
     pmic_ico(false);
@@ -979,6 +1062,10 @@ int main() {
 
     uint16_t backlight_fade_value = 0;
 
+    bool prev_vbus_attached = false;
+
+    uint8_t empty_battery_delay = 4;
+
     while (1) {
         i2c_registers[I2C_REG_FW_VERSION_0] = (FW_VERSION     ) & 0xFF;
         i2c_registers[I2C_REG_FW_VERSION_1] = (FW_VERSION >> 8) & 0xFF;
@@ -1028,14 +1115,37 @@ int main() {
             }
         }*/
 
-        /*static uint32_t pmic_previous = 0;
+        static uint32_t pmic_previous = 0;
         if (now - pmic_previous >= 500 * DELAY_MS_TIME) {
             pmic_previous = now;
-            printf("\r\n");
-            pmic_read_faults();
-            pmic_adc_test();
-            pmic_vbus_test();
-        }*/
+
+            if (empty_battery_delay > 0) {
+                empty_battery_delay -= 1;
+            }
+
+            bool vbus_attached = false;
+            pmic_vbus_attached(&vbus_attached);
+            //printf("Tick: %u %u\r\n", prev_vbus_attached, vbus_attached);
+            if (!prev_vbus_attached && vbus_attached) {
+                //printf("USB ATTACHED\r\n");
+                // Badge has been connected to USB supply
+                pmic_chg_config(false); // Disable battery charging
+                bool battery_attached = false;
+                pmic_battery_attached(&battery_attached, empty_battery_delay == 0);
+                if (battery_attached) {
+                    //printf("BATTERY CHARGER ENABLED\r\n");
+                    pmic_chg_config(true); // Enable battery charging
+                } else {
+                    //printf("BATTERY CHARGER DISABLED: no battery\r\n");
+                }
+            } else if (prev_vbus_attached && !vbus_attached) {
+                // Badge has been disconnected from USB supply
+                pmic_chg_config(false); // Disable battery charging
+                pmic_batt_load_config(false); // Disable 30mA load on battery
+                //printf("USB DETACHED\r\n");
+            }
+            prev_vbus_attached = vbus_attached;
+        }
 
         funDigitalWrite(pin_interrupt, (keyboard_interrupt | input_interrupt) ? FUN_LOW : FUN_HIGH); // Update interrupt pin state
     }
