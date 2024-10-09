@@ -12,7 +12,7 @@
 #define HW_REV 1
 
 // Firmware version
-#define FW_VERSION 3
+#define FW_VERSION 4
 
 #define OVERRIDE_C6 false
 #define HARDWARE_REV 2 // 1 for prototype 1, 2 for prototype 2
@@ -157,6 +157,7 @@ typedef enum {
     I2C_REG_BACKUP_83,
     I2C_REG_PMIC_BATTERY_CONTROL,
     I2C_REG_PMIC_BATTERY_STATUS,
+    I2C_REG_PMIC_OTG_CONTROL,
     I2C_REG_LAST, // End of list marker
 } i2c_register_t;
 
@@ -497,86 +498,6 @@ void bkp_write_byte(uint8_t position, uint8_t value) {
         register_value |= value;
     }
     bkp_write(position >> 1, register_value);
-}
-
-// I2C write callback
-void i2c_write_cb(uint8_t reg, uint8_t length) {
-    static uint32_t new_rtc_value = 0;
-
-    while (length > 0) {
-        switch(reg) {
-            case I2C_REG_DISPLAY_BACKLIGHT_0:
-                if (length > 1) break; // Fall through when only LSB register gets written
-            case I2C_REG_DISPLAY_BACKLIGHT_1: {
-                timer3_set(i2c_registers[I2C_REG_DISPLAY_BACKLIGHT_0] + (i2c_registers[I2C_REG_DISPLAY_BACKLIGHT_1] << 8));
-                break;
-            }
-            case I2C_REG_KEYBOARD_BACKLIGHT_0:
-                if (length > 1) break; // Fall through when only LSB register gets written
-            case I2C_REG_KEYBOARD_BACKLIGHT_1:
-                timer2_set(i2c_registers[I2C_REG_KEYBOARD_BACKLIGHT_0] + (i2c_registers[I2C_REG_KEYBOARD_BACKLIGHT_1] << 8));
-                break;
-            case I2C_REG_OUTPUT:
-                funDigitalWrite(pin_amplifier_enable, i2c_registers[I2C_REG_OUTPUT] & 1);
-#if HARDWARE_REV > 1
-                funDigitalWrite(pin_camera, i2c_registers[I2C_REG_OUTPUT] & 2);
-#endif
-                break;
-            case I2C_REG_RADIO_CONTROL:
-#if OVERRIDE_C6 == false // Ignore radio control register if radio override is active
-                funDigitalWrite(pin_c6_enable, ((i2c_registers[I2C_REG_RADIO_CONTROL] >> 0) & 1) ? FUN_HIGH : FUN_LOW);
-                funDigitalWrite(pin_c6_boot, ((i2c_registers[I2C_REG_RADIO_CONTROL] >> 1) & 1) ? FUN_HIGH : FUN_LOW);
-#endif
-                break;
-            case I2C_REG_RTC_VALUE_0:
-                new_rtc_value &= 0xFFFFFF00;
-                new_rtc_value |= i2c_registers[I2C_REG_RTC_VALUE_0];
-                break;
-            case I2C_REG_RTC_VALUE_1:
-                new_rtc_value &= 0xFFFF00FF;
-                new_rtc_value |= i2c_registers[I2C_REG_RTC_VALUE_1] << 8;
-                break;
-            case I2C_REG_RTC_VALUE_2:
-                new_rtc_value &= 0xFF00FFFF;
-                new_rtc_value |= i2c_registers[I2C_REG_RTC_VALUE_2] << 16;
-                break;
-            case I2C_REG_RTC_VALUE_3:
-                new_rtc_value &= 0x00FFFFFF;
-                new_rtc_value |= i2c_registers[I2C_REG_RTC_VALUE_3] << 24;
-                rtc_set_counter(new_rtc_value);
-                break;
-            default:
-                if (reg >= I2C_REG_BACKUP_0 && reg <= I2C_REG_BACKUP_83) {
-                    bkp_write_byte(reg - I2C_REG_BACKUP_0, i2c_registers[reg]);
-                }
-                break;
-        }
-        // Next register
-        reg++;
-        length--;
-    }
-}
-
-// I2C read callback
-void i2c_read_cb(uint8_t reg) {
-    switch(reg) {
-        case I2C_REG_KEYBOARD_0:
-        case I2C_REG_KEYBOARD_1:
-        case I2C_REG_KEYBOARD_2:
-        case I2C_REG_KEYBOARD_3:
-        case I2C_REG_KEYBOARD_4:
-        case I2C_REG_KEYBOARD_5:
-        case I2C_REG_KEYBOARD_6:
-        case I2C_REG_KEYBOARD_7:
-        case I2C_REG_KEYBOARD_8:
-            keyboard_interrupt = false; // Clear keyboard interrupt flag
-            break;
-        case I2C_REG_INPUT:
-            input_interrupt = false; // Clear input interrupt flag
-            break;
-        default:
-            break;
-    }
 }
 
 // ---- PMIC ----
@@ -981,6 +902,89 @@ void pmic_battery_attached(bool* battery_attached, bool detect_empty_battery) {
     }
 }
 
+// I2C write callback
+void i2c_write_cb(uint8_t reg, uint8_t length) {
+    static uint32_t new_rtc_value = 0;
+
+    while (length > 0) {
+        switch(reg) {
+            case I2C_REG_DISPLAY_BACKLIGHT_0:
+                if (length > 1) break; // Fall through when only LSB register gets written
+            case I2C_REG_DISPLAY_BACKLIGHT_1: {
+                timer3_set(i2c_registers[I2C_REG_DISPLAY_BACKLIGHT_0] + (i2c_registers[I2C_REG_DISPLAY_BACKLIGHT_1] << 8));
+                break;
+            }
+            case I2C_REG_KEYBOARD_BACKLIGHT_0:
+                if (length > 1) break; // Fall through when only LSB register gets written
+            case I2C_REG_KEYBOARD_BACKLIGHT_1:
+                timer2_set(i2c_registers[I2C_REG_KEYBOARD_BACKLIGHT_0] + (i2c_registers[I2C_REG_KEYBOARD_BACKLIGHT_1] << 8));
+                break;
+            case I2C_REG_OUTPUT:
+                funDigitalWrite(pin_amplifier_enable, i2c_registers[I2C_REG_OUTPUT] & 1);
+#if HARDWARE_REV > 1
+                funDigitalWrite(pin_camera, i2c_registers[I2C_REG_OUTPUT] & 2);
+#endif
+                break;
+            case I2C_REG_RADIO_CONTROL:
+#if OVERRIDE_C6 == false // Ignore radio control register if radio override is active
+                funDigitalWrite(pin_c6_enable, ((i2c_registers[I2C_REG_RADIO_CONTROL] >> 0) & 1) ? FUN_HIGH : FUN_LOW);
+                funDigitalWrite(pin_c6_boot, ((i2c_registers[I2C_REG_RADIO_CONTROL] >> 1) & 1) ? FUN_HIGH : FUN_LOW);
+#endif
+                break;
+            case I2C_REG_RTC_VALUE_0:
+                new_rtc_value &= 0xFFFFFF00;
+                new_rtc_value |= i2c_registers[I2C_REG_RTC_VALUE_0];
+                break;
+            case I2C_REG_RTC_VALUE_1:
+                new_rtc_value &= 0xFFFF00FF;
+                new_rtc_value |= i2c_registers[I2C_REG_RTC_VALUE_1] << 8;
+                break;
+            case I2C_REG_RTC_VALUE_2:
+                new_rtc_value &= 0xFF00FFFF;
+                new_rtc_value |= i2c_registers[I2C_REG_RTC_VALUE_2] << 16;
+                break;
+            case I2C_REG_RTC_VALUE_3:
+                new_rtc_value &= 0x00FFFFFF;
+                new_rtc_value |= i2c_registers[I2C_REG_RTC_VALUE_3] << 24;
+                rtc_set_counter(new_rtc_value);
+                break;
+            case I2C_REG_PMIC_OTG_CONTROL:
+                pmic_otg_config(i2c_registers[I2C_REG_PMIC_OTG_CONTROL] & 1);
+                break;
+            default:
+                if (reg >= I2C_REG_BACKUP_0 && reg <= I2C_REG_BACKUP_83) {
+                    bkp_write_byte(reg - I2C_REG_BACKUP_0, i2c_registers[reg]);
+                }
+                break;
+        }
+        // Next register
+        reg++;
+        length--;
+    }
+}
+
+// I2C read callback
+void i2c_read_cb(uint8_t reg) {
+    switch(reg) {
+        case I2C_REG_KEYBOARD_0:
+        case I2C_REG_KEYBOARD_1:
+        case I2C_REG_KEYBOARD_2:
+        case I2C_REG_KEYBOARD_3:
+        case I2C_REG_KEYBOARD_4:
+        case I2C_REG_KEYBOARD_5:
+        case I2C_REG_KEYBOARD_6:
+        case I2C_REG_KEYBOARD_7:
+        case I2C_REG_KEYBOARD_8:
+            keyboard_interrupt = false; // Clear keyboard interrupt flag
+            break;
+        case I2C_REG_INPUT:
+            input_interrupt = false; // Clear input interrupt flag
+            break;
+        default:
+            break;
+    }
+}
+
 // Entry point
 int main() {
     SystemInit();
@@ -1017,6 +1021,8 @@ int main() {
     pmic_ico(false);
     pmic_battery_threshold(4200, true, false);
     pmic_set_fast_charge_current(512, false);
+
+    pmic_otg_config(true); // Enable OTG booster (for testing)
 #endif
 
     // ESP32-C6
