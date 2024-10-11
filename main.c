@@ -359,7 +359,7 @@ void rtc_init() {
     rtc_not_ready |= !(RCC->BDCTLR & RCC_LSERDY); // If LSE oscillator is not running
     rtc_not_ready |= !(RCC->BDCTLR | RCC_RTCSEL_0); // If LSE is not selected as clock source
     rtc_not_ready |= !(RCC->BDCTLR | RCC_RTCEN); // If RTC is not enabled
-    rtc_not_ready |= !(rtc_get_prescaler() == 32768 / 2); // If RTC is not set to tick once per second
+    rtc_not_ready |= !(rtc_get_prescaler() == 32768); // If RTC is not set to tick once per second
 
     if (rtc_not_ready) {
         rtc_disable_wp(); // Disable backup domain write protection
@@ -373,7 +373,7 @@ void rtc_init() {
 
         rtc_wait_for_last_task();
         rtc_wait_for_last_task();
-        rtc_set_prescaler(32768 / 2); // 1 tick per second
+        rtc_set_prescaler(32768); // 1 tick per second
         rtc_wait_for_last_task();
         rtc_set_counter(0);
         rtc_wait_for_last_task();
