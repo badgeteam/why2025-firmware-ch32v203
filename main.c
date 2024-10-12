@@ -202,7 +202,7 @@ bool input_step() {
     value |= funDigitalRead(pin_headphone_detect) << 1;
 
 #if HARDWARE_REV > 1
-    value |= funDigitalRead(pin_power_in) << 2;
+    value |= (!funDigitalRead(pin_power_in)) << 2;
 #endif
 
     i2c_registers[I2C_REG_INPUT] = value;
