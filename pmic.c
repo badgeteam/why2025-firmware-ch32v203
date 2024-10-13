@@ -82,36 +82,30 @@ pmic_result_t pmic_get_input_current_limit(uint16_t* out_current, bool* out_enab
 // REG01
 
 // REG02
-void pmic_adc_status() {
-}
-
 pmic_result_t pmic_adc_control(bool enable, bool continuous) {
-    const uint8_t reg = 0x02;
-    uint8_t value = 0;
-    pm_i2c_read_reg(0x6a, reg, &value, 1);
-    if (enable) {
-        value |= (1 << 7);
-    } else {
-        value &= ~(1 << 7);
-    }
-    if (continuous) {
-        value |= (1 << 6);
-    } else {
-        value &= ~(1 << 6);
-    }
-    return pm_i2c_write_reg(0x6a, reg, &value, 1);
+    bq25895_reg02_t value;
+    pmic_result_t res = pmic_read_reg(0x02, &value.raw);
+    if (res != pmic_ok) return res;
+    value.conv_start = enable;
+    value.conv_rate = continuous;
+    return pmic_write_reg(0x02, value.raw);
 }
 
-void pmic_ico(bool enable) {
-    const uint8_t reg = 0x02;
-    uint8_t value = 0;
-    pm_i2c_read_reg(0x6a, reg, &value, 1);
-    if (enable) {
-        value |= (1 << 4);
-    } else {
-        value &= ~(1 << 4);
-    }
-    pm_i2c_write_reg(0x6a, reg, &value, 1);
+pmic_result_t pmic_ico_control(bool enable) {
+    bq25895_reg02_t value;
+    pmic_result_t res = pmic_read_reg(0x02, &value.raw);
+    if (res != pmic_ok) return res;
+    value.ico_en = enable;
+    return pmic_write_reg(0x02, value.raw);
+}
+
+pmic_result_t pmic_set_otg_boost_frequency(bool high_frequency) {
+    // Low frequency: 500kHz, high frequency: 1.5MHz
+    bq25895_reg02_t value;
+    pmic_result_t res = pmic_read_reg(0x02, &value.raw);
+    if (res != pmic_ok) return res;
+    value.boost_freq = (!high_frequency);
+    return pmic_write_reg(0x02, value.raw);
 }
 
 // REG03
@@ -289,19 +283,6 @@ void pmic_control_battery_connection(bool enable) {
     pm_i2c_write_reg(0x6a, reg, &value, 1);
 }
 
-void pmic_power_on() {
-    pmic_watchdog(0);
-    pmic_control_battery_connection(true);
-}
-
-void pmic_power_off() {
-    pmic_watchdog(0);
-    pmic_adc_control(false, false);
-    pmic_otg_config(false);
-    pmic_batt_load_config(false);
-    pmic_control_battery_connection(false);
-}
-
 // REG0C
 pmic_result_t pmic_read_faults(uint8_t* out_raw, pmic_faults_t* out_faults) {
     bq25895_reg0C_t value = {0};
@@ -325,20 +306,6 @@ pmic_result_t pmic_read_faults(uint8_t* out_raw, pmic_faults_t* out_faults) {
     }
 
     return pmic_ok;
-}
-
-void pmic_vbus_test() {
-    uint8_t reg0b;
-    pm_i2c_read_reg(0x6a, 0x0b, &reg0b, 1);
-    // printf("REG0B: %02x\r\n", reg0b);
-}
-
-void pmic_vbus_attached(bool* attached) {
-    const uint8_t reg = 0x11;
-    uint8_t value;
-    pm_i2c_read_reg(0x6a, reg, &value, 1);
-    *attached = (value >> 7) & 1;
-    // printf("REG11: %02x = %u\r\n", value, *attached);
 }
 
 // REG0E
@@ -456,6 +423,14 @@ pmic_result_t pmic_adc_read_ichgr(uint16_t* out_ichgr) {
 }
 
 /////////////////////////////
+
+void pmic_power_off() {
+    pmic_watchdog(0);
+    pmic_adc_control(false, false);
+    pmic_otg_config(false);
+    pmic_batt_load_config(false);
+    pmic_control_battery_connection(false);
+}
 
 void pmic_battery_attached(bool* battery_attached, bool detect_empty_battery) {
     *battery_attached = false;

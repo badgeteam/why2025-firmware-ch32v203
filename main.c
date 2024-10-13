@@ -16,7 +16,7 @@
 #define HW_REV 1
 
 // Firmware version
-#define FW_VERSION 4
+#define FW_VERSION 5
 
 #define OVERRIDE_C6  false
 #define HARDWARE_REV 2  // 1 for prototype 1, 2 for prototype 2
@@ -240,7 +240,7 @@ bool input_step() {
     return changed;
 }
 
-// Timers for PWM output
+// Timer 2: keyboard backlight PWM
 
 void timer2_set(uint16_t value) {
     if (value > timer2_pwm_cycle_width) {
@@ -259,7 +259,7 @@ void timer2_init() {
     RCC->APB1PRSTR |= RCC_APB1Periph_TIM2;
     RCC->APB1PRSTR &= ~RCC_APB1Periph_TIM2;
 
-    TIM2->PSC = 0x2000;                    // Clock prescaler divider
+    TIM2->PSC = 0x10;                      // Clock prescaler divider
     TIM2->ATRLR = timer2_pwm_cycle_width;  // Total PWM cycle width
 
     TIM2->CHCTLR1 |= TIM_OC2M_2 | TIM_OC2M_1 | TIM_OC2PE;  // Enable channel 2
@@ -272,6 +272,8 @@ void timer2_init() {
 
     TIM2->CTLR1 |= TIM_CEN;  // Enable timer
 }
+
+// Timer 3: display backlight PWM
 
 void timer3_set(uint16_t value) {
     if (value > timer3_pwm_cycle_width) {
@@ -511,7 +513,7 @@ void pmic_task(void) {
     }
 
     bool vbus_attached = false;
-    pmic_vbus_attached(&vbus_attached);
+    pmic_adc_read_busv(NULL, &vbus_attached);
     // printf("Tick: %u %u\r\n", prev_vbus_attached, vbus_attached);
     if (!prev_vbus_attached && vbus_attached) {
         // printf("USB ATTACHED\r\n");
@@ -552,15 +554,23 @@ int main() {
     funPinMode(pin_pm_sda, GPIO_CFGLR_OUT_10Mhz_AF_OD);  // SDA
     funPinMode(pin_pm_scl, GPIO_CFGLR_OUT_10Mhz_AF_OD);  // SCL
     SetupI2CMaster();
-    pmic_power_on();                                  // Enable battery
-    pmic_set_input_current_limit(2048, true, false);  // Allow up to 2048mA to be sourced from the USB-C port
-    pmic_otg_config(false);                           // Disable OTG booster
-    pmic_chg_config(false);                           // Disable battery charging
-    pmic_batt_load_config(false);                     // Disable 30mA load on battery
-    pmic_set_minimum_system_voltage_limit(3500);      // 3.5v (default)
+
+    // Disable PMIC I2C watchdog
     pmic_watchdog(0);
+
+    // Connect battery if previously disabled
+    pmic_control_battery_connection(true);
+
+    // Configure USB power input
+    pmic_set_input_current_limit(2048, true, false);  // Allow up to 2048mA to be sourced from the USB-C port
+    pmic_ico_control(true);
+
+    // Configure other stuff
+    pmic_otg_config(false);                       // Disable OTG booster
+    pmic_chg_config(false);                       // Disable battery charging
+    pmic_batt_load_config(false);                 // Disable 30mA load on battery
+    pmic_set_minimum_system_voltage_limit(3500);  // 3.5v (default)
     pmic_adc_control(false, false);
-    pmic_ico(false);
     pmic_battery_threshold(4200, true, false);
     // pmic_set_fast_charge_current(512, false);
     pmic_set_fast_charge_current(2048, false);
