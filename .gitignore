@@ -3,3 +3,5 @@
 *.hex
 *.lst
 *.map
+.cache
+compile_commands.json

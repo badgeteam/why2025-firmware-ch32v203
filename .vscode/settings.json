@@ -1,3 +1,10 @@
 {
-    "editor.formatOnSave": true
+    "files.associations": {
+        "ch32v003fun.h": "c"
+    },
+    "editor.formatOnSave": true,
+    "clangd.arguments": [
+        "--query-driver=riscv64-elf-gcc"
+    ],
+    "clangd.onConfigChanged": "restart",
 }

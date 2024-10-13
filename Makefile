@@ -7,6 +7,7 @@ ADDITIONAL_C_FILES+=i2c_master.c rtc.c pmic.c keyboard.c
 
 # SDK
 PREFIX := riscv64-elf
+NEWLIB:=/usr/riscv64-elf/include
 CH32V003FUN := ch32v003fun/ch32v003fun
 include ch32v003fun/ch32v003fun/ch32v003fun.mk
 
@@ -25,3 +26,7 @@ flash: cv_flash
 .PHONY: clean
 clean: cv_clean
 
+.PHONY: bear
+bear: clean
+bear:
+	bear -- $(MAKE) build

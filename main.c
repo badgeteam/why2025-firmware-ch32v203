@@ -61,11 +61,11 @@ typedef enum {
     I2C_REG_KEYBOARD_6,
     I2C_REG_KEYBOARD_7,
     I2C_REG_KEYBOARD_8,
-    I2C_REG_DISPLAY_BACKLIGHT_0,   // LSB
-    I2C_REG_DISPLAY_BACKLIGHT_1,   // MSB
-    I2C_REG_KEYBOARD_BACKLIGHT_0,  // LSB
-    I2C_REG_KEYBOARD_BACKLIGHT_1,  // MSB
-    I2C_REG_INPUT,                 // SD card detect (bit 0) & headphone detect (bit 1)
+    I2C_REG_DISPLAY_BACKLIGHT,
+    I2C_REG_KEYBOARD_BACKLIGHT,
+    I2C_REG_INTERRUPT,
+    I2C_REG_RESERVED_0,
+    I2C_REG_INPUT,  // SD card detect (bit 0) & headphone detect (bit 1)
     I2C_REG_OUTPUT,
     I2C_REG_RADIO_CONTROL,
     I2C_REG_RTC_VALUE_0,  // LSB
@@ -188,6 +188,38 @@ volatile bool pmic_interrupt = false;
 volatile bool pmic_adc_trigger = false;
 volatile bool pmic_adc_continuous = false;
 
+// Interrupts
+void interrupt_update_reg(void) {
+    i2c_registers[I2C_REG_INTERRUPT] =
+        (keyboard_interrupt & 1) | ((input_interrupt & 1) << 1) | ((pmic_interrupt & 1) << 2);
+}
+
+void interrupt_set(bool keyboard, bool input, bool pmic) {
+    if (keyboard) {
+        keyboard_interrupt = true;
+    }
+    if (input) {
+        input_interrupt = true;
+    }
+    if (pmic) {
+        pmic_interrupt = true;
+    }
+    interrupt_update_reg();
+}
+
+void interrupt_clear(bool keyboard, bool input, bool pmic) {
+    if (keyboard) {
+        keyboard_interrupt = false;
+    }
+    if (input) {
+        input_interrupt = false;
+    }
+    if (pmic) {
+        pmic_interrupt = false;
+    }
+    interrupt_update_reg();
+}
+
 // Inputs
 bool input_step() {
     static uint8_t previous_value = 0;
@@ -279,7 +311,7 @@ void set_pmic_status(pmic_result_t pmic_result) {
         // can be reset by writing to the I2C register from the host
         if ((i2c_registers[I2C_REG_PMIC_COMM_FAULT] >> 1) & 1) {
             // First communication fault, generate interrupt
-            pmic_interrupt = true;
+            interrupt_set(false, false, true);
         }
         i2c_registers[I2C_REG_PMIC_COMM_FAULT] |= (1 << 1);
     }
@@ -291,18 +323,12 @@ void i2c_write_cb(uint8_t reg, uint8_t length) {
 
     while (length > 0) {
         switch (reg) {
-            case I2C_REG_DISPLAY_BACKLIGHT_0:
-                if (length > 1) break;  // Fall through when only LSB register gets written
-            case I2C_REG_DISPLAY_BACKLIGHT_1: {
-                timer3_set(i2c_registers[I2C_REG_DISPLAY_BACKLIGHT_0] +
-                           (i2c_registers[I2C_REG_DISPLAY_BACKLIGHT_1] << 8));
+            case I2C_REG_DISPLAY_BACKLIGHT: {
+                timer3_set(i2c_registers[I2C_REG_DISPLAY_BACKLIGHT]);
                 break;
             }
-            case I2C_REG_KEYBOARD_BACKLIGHT_0:
-                if (length > 1) break;  // Fall through when only LSB register gets written
-            case I2C_REG_KEYBOARD_BACKLIGHT_1:
-                timer2_set(i2c_registers[I2C_REG_KEYBOARD_BACKLIGHT_0] +
-                           (i2c_registers[I2C_REG_KEYBOARD_BACKLIGHT_1] << 8));
+            case I2C_REG_KEYBOARD_BACKLIGHT:
+                timer2_set(i2c_registers[I2C_REG_KEYBOARD_BACKLIGHT]);
                 break;
             case I2C_REG_OUTPUT:
                 funDigitalWrite(pin_amplifier_enable, i2c_registers[I2C_REG_OUTPUT] & 1);
@@ -366,10 +392,13 @@ void i2c_read_cb(uint8_t reg) {
         case I2C_REG_KEYBOARD_6:
         case I2C_REG_KEYBOARD_7:
         case I2C_REG_KEYBOARD_8:
-            keyboard_interrupt = false;  // Clear keyboard interrupt flag
+            interrupt_clear(true, false, false);  // Clear keyboard interrupt flag
             break;
         case I2C_REG_INPUT:
-            input_interrupt = false;  // Clear input interrupt flag
+            interrupt_clear(false, true, false);  // Clear input interrupt flag
+            break;
+        case I2C_REG_INTERRUPT:
+            interrupt_clear(true, true, true);  // Clear all interrupts flag
             break;
         case I2C_REG_PMIC_COMM_FAULT:
         case I2C_REG_PMIC_FAULT:
@@ -384,7 +413,7 @@ void i2c_read_cb(uint8_t reg) {
         case I2C_REG_PMIC_ADC_VBUS_1:
         case I2C_REG_PMIC_ADC_ICHGR_0:
         case I2C_REG_PMIC_ADC_ICHGR_1:
-            pmic_interrupt = false;  // Clear PMIC interrupt flag
+            interrupt_clear(false, false, true);  // Clear PMIC interrupt flag
             break;
         default:
             break;
@@ -417,7 +446,7 @@ void pmic_task(void) {
     uint8_t prev_raw_faults = i2c_registers[I2C_REG_PMIC_FAULT];
     i2c_registers[I2C_REG_PMIC_FAULT] = raw_faults;
     if (prev_raw_faults != raw_faults) {
-        pmic_interrupt = true;
+        interrupt_set(false, false, true);
     }
 
     // ADC: process previous conversion
@@ -456,7 +485,7 @@ void pmic_task(void) {
         LockI2CSlave(false);
 
         if (adc_active) {
-            pmic_interrupt = true;
+            interrupt_set(false, false, true);
         }
 
         adc_active = false;
@@ -589,13 +618,20 @@ int main() {
         static uint32_t keyboard_scan_previous = 0;
         if (now - keyboard_scan_previous >= keyboard_scan_interval * DELAY_MS_TIME) {
             keyboard_scan_previous = now;
-            keyboard_interrupt |= keyboard_step(&i2c_registers[I2C_REG_KEYBOARD_0]);  // Scans one row when called
+            bool set_keyboard_interrupt =
+                keyboard_step(&i2c_registers[I2C_REG_KEYBOARD_0]);  // Scans one row when called
+            if (set_keyboard_interrupt) {
+                interrupt_set(true, false, false);
+            }
         }
 
         static uint32_t input_scan_previous = 0;
         if (now - input_scan_previous >= input_scan_interval * DELAY_MS_TIME) {
             input_scan_previous = now;
-            input_interrupt |= input_step();  // Scans all inputs
+            bool set_input_interrupt = input_step();  // Scans all inputs
+            if (set_input_interrupt) {
+                interrupt_set(false, true, false);
+            }
 
             if (!funDigitalRead(pin_power_in)) {
                 if (power_button_latch && power_button_counter > 500 / input_scan_interval) {
