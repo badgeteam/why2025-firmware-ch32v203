@@ -3,7 +3,7 @@ TARGET:=main
 TARGET_MCU:=CH32V203
 TARGET_MCU_PACKAGE:=CH32V203C8T6
 
-#ADDITIONAL_C_FILES+=
+ADDITIONAL_C_FILES+=i2c_master.c rtc.c pmic.c keyboard.c
 
 # SDK
 PREFIX := riscv64-elf
