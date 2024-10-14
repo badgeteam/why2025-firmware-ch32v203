@@ -1,0 +1,48 @@
+set(RISCV_COMPILER_FLAGS "-g -Os -flto -ffunction-sections -fdata-sections -fmessage-length=0 -msmall-data-limit=8 -march=rv32imac -mabi=ilp32 -DCH32V20x=1 -static-libgcc -I/usr/riscv64-elf/include -Ich32v003fun/ch32v003fun/../extralibs -Ich32v003fun/ch32v003fun -nostdlib -I. -Wall  -Wl,--print-memory-usage -lgcc -T \"${CMAKE_CURRENT_FUNCTION_LIST_DIR}/generated_CH32V203C8T6_.ld\" -Wl,--gc-sections")
+set(RISCV_COMPILER_FLAGS_DEBUG "")
+set(RISCV_COMPILER_FLAGS_RELEASE "")
+set(RISCV_LINKER_FLAGS "-T \"${CMAKE_CURRENT_FUNCTION_LIST_DIR}/generated_CH32V203C8T6_.ld\" -Wl,--print-memory-usage -lgcc -Wl,--gc-sections")
+
+set(CMAKE_C_FLAGS             "${RISCV_COMPILER_FLAGS} ${CMAKE_C_FLAGS}")
+set(CMAKE_CXX_FLAGS           "${RISCV_COMPILER_FLAGS} ${RISCV_COMPILER_FLAGS_CXX} ${CMAKE_CXX_FLAGS}")
+set(CMAKE_ASM_FLAGS           "${RISCV_COMPILER_FLAGS} ${CMAKE_ASM_FLAGS}")
+set(CMAKE_C_FLAGS_DEBUG       "${RISCV_COMPILER_FLAGS_DEBUG} ${CMAKE_C_FLAGS_DEBUG}")
+set(CMAKE_CXX_FLAGS_DEBUG     "${RISCV_COMPILER_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS_DEBUG}")
+set(CMAKE_ASM_FLAGS_DEBUG     "${RISCV_COMPILER_FLAGS_DEBUG} ${CMAKE_ASM_FLAGS_DEBUG}")
+set(CMAKE_C_FLAGS_RELEASE     "${RISCV_COMPILER_FLAGS_RELEASE} ${CMAKE_C_FLAGS_RELEASE}")
+set(CMAKE_CXX_FLAGS_RELEASE   "${RISCV_COMPILER_FLAGS_RELEASE} ${CMAKE_CXX_FLAGS_RELEASE}")
+set(CMAKE_ASM_FLAGS_RELEASE   "${RISCV_COMPILER_FLAGS_RELEASE} ${CMAKE_ASM_FLAGS_RELEASE}")
+set(CMAKE_SHARED_LINKER_FLAGS "${RISCV_LINKER_FLAGS} ${CMAKE_SHARED_LINKER_FLAGS}")
+set(CMAKE_MODULE_LINKER_FLAGS "${RISCV_LINKER_FLAGS} ${CMAKE_MODULE_LINKER_FLAGS}")
+set(CMAKE_EXE_LINKER_FLAGS    "${RISCV_LINKER_FLAGS} ${RISCV_LINKER_FLAGS_EXE} ${CMAKE_EXE_LINKER_FLAGS}")
+
+#file(GLOB PLATFORM_SOURCES
+#	"*.c"
+#)
+
+#add_library(platform
+#	STATIC
+#		${PLATFORM_SOURCES}
+#)
+#
+#target_include_directories(platform
+#	PUBLIC
+#		.
+#)
+#
+#target_compile_definitions(platform
+#    PUBLIC
+#        TARGET_MCU="CH32V203"
+#        MCU_PACKAGE=1
+#        TARGET_MCU_LD=2
+#        TARGET_MCU_MEMORY_SPLIT=
+#        TARGET_MCU_PACKAGE="CH32V203C8T6"
+#        CH32V20x=1
+#
+#)
+
+#target_link_libraries(platform
+#	PUBLIC
+#	PRIVATE
+#)
+
