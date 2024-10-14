@@ -495,7 +495,7 @@ void pmic_task(void) {
 
     // ADC: trigger new conversion
     if (pmic_adc_trigger || prev_adc_contiuous != pmic_adc_continuous) {
-        res = pmic_adc_control(pmic_adc_trigger, prev_adc_contiuous);
+        res = pmic_set_adc_configuration(pmic_adc_trigger, prev_adc_contiuous);
         set_pmic_status(res);
         if (res != pmic_ok) return;  // Stop on communication error
 
@@ -563,14 +563,14 @@ int main() {
 
     // Configure USB power input
     pmic_set_input_current_limit(2048, true, false);  // Allow up to 2048mA to be sourced from the USB-C port
-    pmic_ico_control(true);
+    pmic_set_input_current_optimizer(true);
 
     // Configure other stuff
     pmic_otg_config(false);                       // Disable OTG booster
     pmic_chg_config(false);                       // Disable battery charging
     pmic_batt_load_config(false);                 // Disable 30mA load on battery
     pmic_set_minimum_system_voltage_limit(3500);  // 3.5v (default)
-    pmic_adc_control(false, false);
+    pmic_set_adc_configuration(false, false);
     pmic_battery_threshold(4200, true, false);
     // pmic_set_fast_charge_current(512, false);
     pmic_set_fast_charge_current(2048, false);

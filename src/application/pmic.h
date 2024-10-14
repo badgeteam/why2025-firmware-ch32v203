@@ -3,12 +3,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef enum pmic_result {
+typedef enum {
     pmic_ok = 0,
     pmic_error = 1,
 } pmic_result_t;
 
-typedef struct pmic_faults {
+typedef struct {
     bool watchdog;
     bool boost;
     bool chrg_input;
@@ -20,22 +20,42 @@ typedef struct pmic_faults {
     bool ntc_boost;
 } pmic_faults_t;
 
+typedef enum {
+    PMIC_BHOT_1 = 0,
+    PMIC_BHOT_0 = 1,
+    PMIC_BHOT_2 = 2,
+    PMIC_BHOT_DISABLE = 3,
+} pmic_bhot_t;
+
 // REG00
 pmic_result_t pmic_set_input_current_limit(uint16_t current, bool enable_ilim_pin, bool enable_hiz);
 pmic_result_t pmic_get_input_current_limit(uint16_t* out_current, bool* out_enable_ilim_pin, bool* out_enable_hiz);
 
 // REG01
+pmic_result_t pmic_set_input_voltage_limit_offset(uint8_t offset);
+pmic_result_t pmic_get_input_voltage_limit_offset(uint8_t* out_offset);
+pmic_result_t pmic_set_boost_mode_temperature_monitor_thresholds(bool cold, pmic_bhot_t hot);
+pmic_result_t pmic_get_boost_mode_temperature_monitor_thresholds(bool* out_cold, pmic_bhot_t* out_hot);
 
 // REG02
-pmic_result_t pmic_adc_control(bool enable, bool continuous);
-pmic_result_t pmic_ico_control(bool enable);
-pmic_result_t pmic_set_otg_boost_frequency(bool high_frequency);
+pmic_result_t pmic_set_otg_boost_frequency(bool low_frequency);
+pmic_result_t pmic_get_otg_boost_frequency(bool* out_low_frequency);
+pmic_result_t pmic_set_input_current_optimizer(bool enable);
+pmic_result_t pmic_get_input_current_optimizer(bool* out_enable);
+pmic_result_t pmic_set_high_voltage_dcp(bool enable);
+pmic_result_t pmic_get_high_voltage_dcp(bool* out_enable);
+pmic_result_t pmic_set_maxcharge(bool enable);
+pmic_result_t pmic_get_maxcharge(bool* out_enable);
+pmic_result_t pmic_set_adc_configuration(bool start, bool continuous);
+pmic_result_t pmic_get_adc_configuration(bool* out_busy, bool* out_continuous);
 
 // REG03
+pmic_result_t pmic_set_minimum_system_voltage_limit(uint16_t millivolt);
+pmic_result_t pmic_get_minimum_system_voltage_limit(uint16_t* out_millivolt);
+
 void pmic_otg_config(bool enable);
 void pmic_chg_config(bool enable);
 void pmic_batt_load_config(bool enable);
-void pmic_set_minimum_system_voltage_limit(uint16_t voltage);
 
 // REG04
 void pmic_set_fast_charge_current(uint16_t current, bool en_pumpx);

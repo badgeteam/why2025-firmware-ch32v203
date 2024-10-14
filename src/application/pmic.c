@@ -17,7 +17,6 @@ static pmic_result_t pmic_write_reg(uint8_t reg, uint8_t value) {
 }
 
 // REG00
-
 pmic_result_t pmic_set_input_current_limit(uint16_t current, bool enable_ilim_pin, bool enable_hiz) {
     bq25895_reg00_t value = {0};
 
@@ -80,18 +79,67 @@ pmic_result_t pmic_get_input_current_limit(uint16_t* out_current, bool* out_enab
 }
 
 // REG01
+pmic_result_t pmic_set_input_voltage_limit_offset(uint8_t offset) {
+    bq25895_reg01_t value = {0};
+    pmic_result_t res = pmic_read_reg(0x01, &value.raw);
+    if (res != pmic_ok) return res;
+    value.vindpm_os = offset;
+    return pmic_write_reg(0x01, value.raw);
+}
+
+pmic_result_t pmic_get_input_voltage_limit_offset(uint8_t* out_offset) {
+    bq25895_reg01_t value = {0};
+    pmic_result_t res = pmic_read_reg(0x01, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_offset) {
+        *out_offset = value.vindpm_os;
+    }
+    return pmic_ok;
+}
+
+pmic_result_t pmic_set_boost_mode_temperature_monitor_thresholds(bool cold, pmic_bhot_t hot) {
+    bq25895_reg01_t value = {0};
+    pmic_result_t res = pmic_read_reg(0x01, &value.raw);
+    if (res != pmic_ok) return res;
+    value.bcold = cold;
+    value.bhot = (uint8_t)hot;
+    return pmic_write_reg(0x01, value.raw);
+}
+
+pmic_result_t pmic_get_boost_mode_temperature_monitor_thresholds(bool* out_cold, pmic_bhot_t* out_hot) {
+    bq25895_reg01_t value = {0};
+    pmic_result_t res = pmic_read_reg(0x01, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_cold) {
+        *out_cold = value.bcold;
+    }
+    if (out_hot) {
+        *out_hot = (pmic_bhot_t)value.bhot;
+    }
+    return pmic_ok;
+}
 
 // REG02
-pmic_result_t pmic_adc_control(bool enable, bool continuous) {
+pmic_result_t pmic_set_otg_boost_frequency(bool low_frequency) {
+    // Low frequency: 500kHz, high frequency: 1.5MHz
     bq25895_reg02_t value;
     pmic_result_t res = pmic_read_reg(0x02, &value.raw);
     if (res != pmic_ok) return res;
-    value.conv_start = enable;
-    value.conv_rate = continuous;
+    value.boost_freq = low_frequency;
     return pmic_write_reg(0x02, value.raw);
 }
 
-pmic_result_t pmic_ico_control(bool enable) {
+pmic_result_t pmic_get_otg_boost_frequency(bool* out_low_frequency) {
+    bq25895_reg02_t value;
+    pmic_result_t res = pmic_read_reg(0x02, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_low_frequency) {
+        *out_low_frequency = value.boost_freq;
+    }
+    return pmic_ok;
+}
+
+pmic_result_t pmic_set_input_current_optimizer(bool enable) {
     bq25895_reg02_t value;
     pmic_result_t res = pmic_read_reg(0x02, &value.raw);
     if (res != pmic_ok) return res;
@@ -99,16 +147,131 @@ pmic_result_t pmic_ico_control(bool enable) {
     return pmic_write_reg(0x02, value.raw);
 }
 
-pmic_result_t pmic_set_otg_boost_frequency(bool high_frequency) {
-    // Low frequency: 500kHz, high frequency: 1.5MHz
+pmic_result_t pmic_get_input_current_optimizer(bool* out_enable) {
     bq25895_reg02_t value;
     pmic_result_t res = pmic_read_reg(0x02, &value.raw);
     if (res != pmic_ok) return res;
-    value.boost_freq = (!high_frequency);
+    if (out_enable) {
+        *out_enable = value.ico_en;
+    }
+    return pmic_ok;
+}
+
+pmic_result_t pmic_set_high_voltage_dcp(bool enable) {
+    bq25895_reg02_t value;
+    pmic_result_t res = pmic_read_reg(0x02, &value.raw);
+    if (res != pmic_ok) return res;
+    value.hvdcp_en = enable;
     return pmic_write_reg(0x02, value.raw);
 }
 
+pmic_result_t pmic_get_high_voltage_dcp(bool* out_enable) {
+    bq25895_reg02_t value;
+    pmic_result_t res = pmic_read_reg(0x02, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_enable) {
+        *out_enable = value.hvdcp_en;
+    }
+    return pmic_ok;
+}
+
+pmic_result_t pmic_set_maxcharge(bool enable) {
+    bq25895_reg02_t value;
+    pmic_result_t res = pmic_read_reg(0x02, &value.raw);
+    if (res != pmic_ok) return res;
+    value.maxc_en = enable;
+    return pmic_write_reg(0x02, value.raw);
+}
+
+pmic_result_t pmic_get_maxcharge(bool* out_enable) {
+    bq25895_reg02_t value;
+    pmic_result_t res = pmic_read_reg(0x02, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_enable) {
+        *out_enable = value.maxc_en;
+    }
+    return pmic_ok;
+}
+
+pmic_result_t pmic_set_adc_configuration(bool start, bool continuous) {
+    bq25895_reg02_t value;
+    pmic_result_t res = pmic_read_reg(0x02, &value.raw);
+    if (res != pmic_ok) return res;
+    value.conv_start = start;
+    value.conv_rate = continuous;
+    return pmic_write_reg(0x02, value.raw);
+}
+
+pmic_result_t pmic_get_adc_configuration(bool* out_busy, bool* out_continuous) {
+    bq25895_reg02_t value;
+    pmic_result_t res = pmic_read_reg(0x02, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_busy) {
+        *out_busy = value.conv_start;
+    }
+    if (out_continuous) {
+        *out_continuous = value.conv_rate;
+    }
+    return pmic_ok;
+}
+
 // REG03
+pmic_result_t pmic_set_minimum_system_voltage_limit(uint16_t millivolt) {
+    bq25895_reg03_t value;
+    pmic_result_t res = pmic_read_reg(0x03, &value.raw);
+    if (res != pmic_ok) return res;
+
+    value.sys_min = 0;
+
+    if (millivolt < 3000) {
+        millivolt = 3000;  // Minimum
+    }
+    millivolt -= 3000;  // Offset
+
+    if (millivolt > 400) {
+        millivolt -= 400;
+        value.sys_min |= (1 << 2);
+    }
+
+    if (millivolt > 200) {
+        millivolt -= 200;
+        value.sys_min |= (1 << 1);
+    }
+
+    if (millivolt > 100) {
+        millivolt -= 100;
+        value.sys_min |= (1 << 0);
+    }
+
+    return pmic_write_reg(0x03, value.raw);
+}
+
+pmic_result_t pmic_get_minimum_system_voltage_limit(uint16_t* out_millivolt) {
+    bq25895_reg03_t value;
+    pmic_result_t res = pmic_read_reg(0x03, &value.raw);
+    if (res != pmic_ok) return res;
+
+    uint16_t millivolt = 3000;
+
+    if (value.sys_min & (1 << 2)) {
+        millivolt += 400;
+    }
+
+    if (value.sys_min & (1 << 1)) {
+        millivolt += 200;
+    }
+
+    if (value.sys_min & (1 << 0)) {
+        millivolt += 100;
+    }
+
+    if (out_millivolt) {
+        *out_millivolt = millivolt;
+    }
+
+    return pmic_ok;
+}
+
 void pmic_otg_config(bool enable) {
     const uint8_t reg = 0x03;
     uint8_t value = 0;
@@ -142,37 +305,6 @@ void pmic_batt_load_config(bool enable) {
     } else {
         value &= ~(1 << 7);
     }
-    pm_i2c_write_reg(0x6a, reg, &value, 1);
-}
-
-void pmic_set_minimum_system_voltage_limit(uint16_t voltage) {
-    // Voltage in mV
-    const uint8_t reg = 0x03;
-    uint8_t value = 0;
-    pm_i2c_read_reg(0x6a, reg, &value, 1);
-
-    value &= 0b11110001;  // Mask
-
-    value |= 0b10000000;  // Enable battery load
-
-    if (voltage < 3000) {  // Minimum voltage is 3V
-        voltage = 3000;
-    }
-    voltage -= 3000;  // Offset is 3V
-
-    if (voltage >= 400) {
-        voltage -= 400;
-        value |= (0b100) << 1;  // Add 0.4V
-    }
-    if (voltage >= 200) {
-        voltage -= 200;
-        value |= (0b010) << 1;  // Add 0.2V
-    }
-    if (voltage >= 100) {
-        voltage -= 100;
-        value |= (0b001) << 1;  // Add 0.1V
-    }
-
     pm_i2c_write_reg(0x6a, reg, &value, 1);
 }
 
@@ -426,7 +558,7 @@ pmic_result_t pmic_adc_read_ichgr(uint16_t* out_ichgr) {
 
 void pmic_power_off() {
     pmic_watchdog(0);
-    pmic_adc_control(false, false);
+    pmic_set_adc_configuration(false, false);
     pmic_otg_config(false);
     pmic_batt_load_config(false);
     pmic_control_battery_connection(false);
