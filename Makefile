@@ -12,3 +12,7 @@ build:
 .PHONY: clean
 clean:
 	rm -rf ${BUILD}
+
+.PHONY: flash
+flash: build
+	minichlink -w build/application/coprocessor.bin flash -b -D

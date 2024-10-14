@@ -681,6 +681,12 @@ int main() {
             pmic_task();
         }
 
+        static uint32_t test_previous = 0;
+        if (now - test_previous >= 1000 * DELAY_MS_TIME) {
+            test_previous = now;
+            printf("Hello world\r\n");
+        }
+
         funDigitalWrite(pin_interrupt,
                         (keyboard_interrupt | input_interrupt | pmic_interrupt)
                             ? FUN_LOW
