@@ -368,7 +368,7 @@ void i2c_write_cb(uint8_t reg, uint8_t length) {
             }
             case I2C_REG_PMIC_OTG_CONTROL:
                 // TODO: set_pmic_status();
-                pmic_otg_config(i2c_registers[I2C_REG_PMIC_OTG_CONTROL] & 1);
+                pmic_set_otg_enable(i2c_registers[I2C_REG_PMIC_OTG_CONTROL] & 1);
                 break;
             default:
                 if (reg >= I2C_REG_BACKUP_0 && reg <= I2C_REG_BACKUP_83) {
@@ -518,19 +518,19 @@ void pmic_task(void) {
     if (!prev_vbus_attached && vbus_attached) {
         // printf("USB ATTACHED\r\n");
         //   Badge has been connected to USB supply
-        pmic_chg_config(false);  // Disable battery charging
+        pmic_set_charge_enable(false);  // Disable battery charging
         bool battery_attached = false;
         pmic_battery_attached(&battery_attached, empty_battery_delay == 0);
         if (battery_attached) {
             // printf("BATTERY CHARGER ENABLED\r\n");
-            pmic_chg_config(true);  // Enable battery charging
+            pmic_set_charge_enable(true);  // Enable battery charging
         } else {
             // printf("BATTERY CHARGER DISABLED: no battery\r\n");
         }
     } else if (prev_vbus_attached && !vbus_attached) {
         // Badge has been disconnected from USB supply
-        pmic_chg_config(false);        // Disable battery charging
-        pmic_batt_load_config(false);  // Disable 30mA load on battery
+        pmic_set_charge_enable(false);        // Disable battery charging
+        pmic_set_battery_load_enable(false);  // Disable 30mA load on battery
         // printf("USB DETACHED\r\n");
     }
     prev_vbus_attached = vbus_attached;
@@ -566,16 +566,17 @@ int main() {
     pmic_set_input_current_optimizer(true);
 
     // Configure other stuff
-    pmic_otg_config(false);                       // Disable OTG booster
-    pmic_chg_config(false);                       // Disable battery charging
-    pmic_batt_load_config(false);                 // Disable 30mA load on battery
+    pmic_set_battery_load_enable(false);          // Disable 30mA load on battery
     pmic_set_minimum_system_voltage_limit(3500);  // 3.5v (default)
     pmic_set_adc_configuration(false, false);
     pmic_battery_threshold(4200, true, false);
-    // pmic_set_fast_charge_current(512, false);
-    pmic_set_fast_charge_current(2048, false);
 
-    pmic_otg_config(true);  // Enable OTG booster (for testing)
+    // Configure battery charger
+    pmic_set_charge_enable(false);
+    pmic_set_fast_charge_current(2048);
+    pmic_set_pumpx_enable(false);
+
+    pmic_set_otg_enable(true);  // Enable OTG booster (for testing)
 #endif
 
     // ESP32-C6
