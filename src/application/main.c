@@ -169,10 +169,8 @@ typedef enum {
     I2C_REG_PMIC_ADC_VBUS_1,   // MSB
     I2C_REG_PMIC_ADC_ICHGR_0,  // LSB (value in mA)
     I2C_REG_PMIC_ADC_ICHGR_1,  // MSB
-
-    // ----
     I2C_REG_PMIC_BATTERY_CONTROL,
-    I2C_REG_PMIC_BATTERY_STATUS,
+    I2C_REG_PMIC_CHARGING_STATUS,
     I2C_REG_PMIC_OTG_CONTROL,
     I2C_REG_LAST,  // End of list marker
 } i2c_register_t;
@@ -187,6 +185,7 @@ volatile bool pmic_interrupt = false;
 // PMIC flags
 volatile bool pmic_adc_trigger = false;
 volatile bool pmic_adc_continuous = false;
+volatile bool pmic_force_disable_charging = false;
 
 // Interrupts
 void interrupt_update_reg(void) {
@@ -366,9 +365,11 @@ void i2c_write_cb(uint8_t reg, uint8_t length) {
                 pmic_adc_continuous = (i2c_registers[I2C_REG_PMIC_ADC_CONTROL] & 2) >> 1;
                 break;
             }
+            case I2C_REG_PMIC_BATTERY_CONTROL:
+                pmic_force_disable_charging = (i2c_registers[I2C_REG_PMIC_BATTERY_CONTROL] & (1 << 0)) & 1;
+                break;
             case I2C_REG_PMIC_OTG_CONTROL:
-                // TODO: set_pmic_status();
-                pmic_set_otg_enable(i2c_registers[I2C_REG_PMIC_OTG_CONTROL] & 1);
+                set_pmic_status(pmic_set_otg_enable(i2c_registers[I2C_REG_PMIC_OTG_CONTROL] & 1));
                 break;
             default:
                 if (reg >= I2C_REG_BACKUP_0 && reg <= I2C_REG_BACKUP_83) {
@@ -432,17 +433,20 @@ void bkp_read_all(void) {
 
 void pmic_task(void) {
     // Periodic task for controlling PMIC
+    static uint8_t empty_battery_delay = 4;
     static bool prev_adc_contiuous = false;
     static bool adc_active = false;
-    static uint8_t empty_battery_delay = 4;
     static bool prev_vbus_attached = false;
+    static bool vbus_attached = false;
+    static bool battery_attached = false;
+    static bool prev_force_disable_charging = false;
 
     pmic_result_t res;
 
     // Fault reporting
     uint8_t raw_faults = 0;
     pmic_faults_t faults = {0};
-    res = pmic_read_faults(&raw_faults, &faults);
+    res = pmic_get_faults(&raw_faults, &faults);
     set_pmic_status(res);
     if (res != pmic_ok) return;  // Stop on communication error
     uint8_t prev_raw_faults = i2c_registers[I2C_REG_PMIC_FAULT];
@@ -454,24 +458,39 @@ void pmic_task(void) {
     // ADC: process previous conversion
     if (adc_active || pmic_adc_continuous) {
         uint16_t adc_vbat = 0;
-        res = pmic_adc_read_batv(&adc_vbat, NULL);
-        if (res != pmic_ok) return;  // Stop on communication error
+        res = pmic_get_adc_vbat(&adc_vbat, NULL);
+        if (res != pmic_ok) {
+            set_pmic_status(res);
+            return;  // Stop on communication error
+        }
 
         uint16_t adc_vsys = 0;
-        res = pmic_adc_read_sysv(&adc_vsys);
-        if (res != pmic_ok) return;  // Stop on communication error
+        res = pmic_get_adc_vsys(&adc_vsys);
+        if (res != pmic_ok) {
+            set_pmic_status(res);
+            return;  // Stop on communication error
+        }
 
         uint16_t adc_tspct = 0;
-        res = pmic_adc_read_tspct(&adc_tspct);
-        if (res != pmic_ok) return;  // Stop on communication error
+        res = pmic_get_adc_tspct(&adc_tspct);
+        if (res != pmic_ok) {
+            set_pmic_status(res);
+            return;  // Stop on communication error
+        }
 
-        uint16_t adc_vbus = 0;
-        res = pmic_adc_read_busv(&adc_vbus, NULL);
-        if (res != pmic_ok) return;  // Stop on communication error
+        // uint16_t adc_vbus = 0;
+        // res = pmic_get_adc_vbus(&adc_vbus, NULL);
+        // if (res != pmic_ok) {
+        //    set_pmic_status(res);
+        //    return;  // Stop on communication error
+        //}
 
         uint16_t adc_ichgr = 0;
-        res = pmic_adc_read_ichgr(&adc_ichgr);
-        if (res != pmic_ok) return;  // Stop on communication error
+        res = pmic_get_adc_ichgr(&adc_ichgr);
+        if (res != pmic_ok) {
+            set_pmic_status(res);
+            return;  // Stop on communication error
+        }
 
         LockI2CSlave(true);
         i2c_registers[I2C_REG_PMIC_ADC_VBAT_0] = adc_vbat & 0xFF;
@@ -480,8 +499,8 @@ void pmic_task(void) {
         i2c_registers[I2C_REG_PMIC_ADC_VSYS_1] = (adc_vsys >> 8) & 0xFF;
         i2c_registers[I2C_REG_PMIC_ADC_TS_0] = adc_tspct & 0xFF;
         i2c_registers[I2C_REG_PMIC_ADC_TS_1] = (adc_tspct >> 8) & 0xFF;
-        i2c_registers[I2C_REG_PMIC_ADC_VBUS_0] = adc_vbus & 0xFF;
-        i2c_registers[I2C_REG_PMIC_ADC_VBUS_1] = (adc_vbus >> 8) & 0xFF;
+        // i2c_registers[I2C_REG_PMIC_ADC_VBUS_0] = adc_vbus & 0xFF;
+        // i2c_registers[I2C_REG_PMIC_ADC_VBUS_1] = (adc_vbus >> 8) & 0xFF;
         i2c_registers[I2C_REG_PMIC_ADC_ICHGR_0] = adc_ichgr & 0xFF;
         i2c_registers[I2C_REG_PMIC_ADC_ICHGR_1] = (adc_ichgr >> 8) & 0xFF;
         LockI2CSlave(false);
@@ -496,8 +515,10 @@ void pmic_task(void) {
     // ADC: trigger new conversion
     if (pmic_adc_trigger || prev_adc_contiuous != pmic_adc_continuous) {
         res = pmic_set_adc_configuration(pmic_adc_trigger, prev_adc_contiuous);
-        set_pmic_status(res);
-        if (res != pmic_ok) return;  // Stop on communication error
+        if (res != pmic_ok) {
+            set_pmic_status(res);
+            return;  // Stop on communication error
+        }
 
         pmic_adc_trigger = 0;
         prev_adc_contiuous = pmic_adc_continuous;
@@ -507,33 +528,48 @@ void pmic_task(void) {
     }
 
     // Battery detection
-
     if (empty_battery_delay > 0) {
         empty_battery_delay -= 1;
+        if (empty_battery_delay == 0) {
+            prev_vbus_attached = false;  // Force redetect
+        }
     }
 
-    bool vbus_attached = false;
-    pmic_adc_read_busv(NULL, &vbus_attached);
-    // printf("Tick: %u %u\r\n", prev_vbus_attached, vbus_attached);
-    if (!prev_vbus_attached && vbus_attached) {
-        // printf("USB ATTACHED\r\n");
-        //   Badge has been connected to USB supply
-        pmic_set_charge_enable(false);  // Disable battery charging
-        bool battery_attached = false;
-        pmic_battery_attached(&battery_attached, empty_battery_delay == 0);
-        if (battery_attached) {
-            // printf("BATTERY CHARGER ENABLED\r\n");
-            pmic_set_charge_enable(true);  // Enable battery charging
-        } else {
-            // printf("BATTERY CHARGER DISABLED: no battery\r\n");
+    uint16_t adc_vbus = 0;
+    pmic_get_adc_vbus(&adc_vbus, &vbus_attached);
+    LockI2CSlave(true);
+    i2c_registers[I2C_REG_PMIC_ADC_VBUS_0] = adc_vbus & 0xFF;
+    i2c_registers[I2C_REG_PMIC_ADC_VBUS_1] = (adc_vbus >> 8) & 0xFF;
+    LockI2CSlave(false);
+    if (pmic_force_disable_charging) {
+        // Charging has been disabled by user
+        if (!prev_force_disable_charging) {
+            res = pmic_configure_battery_charger(false);
         }
-    } else if (prev_vbus_attached && !vbus_attached) {
-        // Badge has been disconnected from USB supply
-        pmic_set_charge_enable(false);        // Disable battery charging
-        pmic_set_battery_load_enable(false);  // Disable 30mA load on battery
-        // printf("USB DETACHED\r\n");
+        prev_force_disable_charging = pmic_force_disable_charging;
+    } else {
+        if (!prev_vbus_attached && vbus_attached) {
+            //   Badge has been connected to USB supply
+            pmic_battery_attached(&battery_attached, empty_battery_delay == 0);
+            pmic_configure_battery_charger(battery_attached);
+        } else if (prev_vbus_attached && !vbus_attached) {
+            // Badge has been disconnected from USB supply
+            pmic_configure_battery_charger(false);  // Disable battery charging
+        }
     }
     prev_vbus_attached = vbus_attached;
+
+    uint8_t charging_status = 0;
+    if (battery_attached) {
+        charging_status |= (1 << 0);  // Bit 0: battery attached
+    }
+    if (vbus_attached) {
+        charging_status |= (1 << 1);  // Bit 1: power input attached
+    }
+    if (pmic_force_disable_charging) {
+        charging_status |= (1 << 2);  // Bit 12: charging disabled by user
+    }
+    i2c_registers[I2C_REG_PMIC_CHARGING_STATUS] = charging_status;
 }
 
 // Entry point
@@ -556,25 +592,27 @@ int main() {
     SetupI2CMaster();
 
     // Disable PMIC I2C watchdog
-    pmic_watchdog(0);
+    pmic_get_watchdog_timer_limit(0);
 
     // Connect battery if previously disabled
-    pmic_control_battery_connection(true);
+    pmic_set_battery_disconnect_enable(false);
 
     // Configure USB power input
     pmic_set_input_current_limit(2048, true, false);  // Allow up to 2048mA to be sourced from the USB-C port
-    pmic_set_input_current_optimizer(true);
+    pmic_set_input_current_optimizer(true);  // Check input voltage and reduce current if supply insufficient for 2048mA
 
     // Configure other stuff
     pmic_set_battery_load_enable(false);          // Disable 30mA load on battery
     pmic_set_minimum_system_voltage_limit(3500);  // 3.5v (default)
-    pmic_set_adc_configuration(false, false);
-    pmic_battery_threshold(4200, true, false);
+    pmic_set_adc_configuration(false, false);     // Disable continuous ADC mode
 
     // Configure battery charger
-    pmic_set_charge_enable(false);
-    pmic_set_fast_charge_current(2048);
-    pmic_set_pumpx_enable(false);
+    pmic_set_charge_enable(false);                           // Disable battery charging
+    pmic_set_pumpx_enable(false);                            // Disable current pulse control
+    pmic_set_charge_voltage_limit(4208);                     // Charge to 4.2v
+    pmic_set_charge_current_fast(2048);                      // Charge with 2A maximum
+    pmic_set_charge_battery_precharge_threshold_3v(true);    // Switch from precharge to fast charge at 3v
+    pmic_set_charge_recharge_threshold_200mv_offset(false);  // Recharge when battery voltage is 100mV below target
 
     pmic_set_otg_enable(true);  // Enable OTG booster (for testing)
 #endif

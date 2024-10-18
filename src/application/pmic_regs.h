@@ -177,7 +177,7 @@ typedef struct {
     union {
         uint8_t raw;
         struct {
-            uint8_t batv : 7;        // Battery voltage
+            uint8_t vbat : 7;        // Battery voltage
             uint8_t therm_stat : 1;  // Thermal regulation status
         };
     };
@@ -187,7 +187,7 @@ typedef struct {
     union {
         uint8_t raw;
         struct {
-            uint8_t sysv : 7;  // System voltage
+            uint8_t vsys : 7;  // System voltage
             uint8_t unused : 1;
         };
     };
@@ -207,8 +207,8 @@ typedef struct {
     union {
         uint8_t raw;
         struct {
-            uint8_t busv : 7;     // Input voltage (vbus)
-            uint8_t busv_gd : 1;  // Input power good
+            uint8_t vbus : 7;     // Input voltage (vbus)
+            uint8_t vbus_gd : 1;  // Input power good
         };
     };
 } bq25895_reg11_t;

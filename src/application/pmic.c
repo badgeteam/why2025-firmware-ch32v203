@@ -338,7 +338,7 @@ pmic_result_t pmic_get_battery_load_enable(bool* out_enable) {
 
 // REG04
 
-pmic_result_t pmic_set_fast_charge_current(uint16_t current) {
+pmic_result_t pmic_set_charge_current_fast(uint16_t current) {
     bq25895_reg04_t value;
     pmic_result_t res = pmic_read_reg(0x04, &value.raw);
     if (res != pmic_ok) return res;
@@ -426,233 +426,681 @@ pmic_result_t pmic_get_pumpx_enable(bool* out_enable) {
 
 // REG05
 pmic_result_t pmic_set_termination_current(uint16_t current) {
-    return pmic_error;
+    bq25895_reg05_t value;
+    pmic_result_t res = pmic_read_reg(0x05, &value.raw);
+    if (res != pmic_ok) return res;
+    if (current < 64) {
+        current = 64;
+    }
+    value.iterm = 0;
+    current -= 64;  // Offset
+    if (current > 512) {
+        current -= 512;
+        value.iterm |= (1 << 3);
+    }
+    if (current > 256) {
+        current -= 256;
+        value.iterm |= (1 << 2);
+    }
+    if (current > 128) {
+        current -= 128;
+        value.iterm |= (1 << 1);
+    }
+    if (current > 64) {
+        current -= 64;
+        value.iterm |= (1 << 0);
+    }
+    return pmic_write_reg(0x05, value.raw);
 }
 
 pmic_result_t pmic_get_termination_current(uint16_t* out_current) {
-    return pmic_error;
+    bq25895_reg05_t value;
+    pmic_result_t res = pmic_read_reg(0x05, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_current) {
+        uint16_t current = 64;
+        if (value.iterm & (1 << 3)) {
+            current += 512;
+        }
+        if (value.iterm & (1 << 2)) {
+            current += 256;
+        }
+        if (value.iterm & (1 << 1)) {
+            current += 128;
+        }
+        if (value.iterm & (1 << 0)) {
+            current += 64;
+        }
+        *out_current = current;
+    }
+    return pmic_ok;
 }
 
 pmic_result_t pmic_set_precharge_current(uint16_t current) {
-    return pmic_error;
+    bq25895_reg05_t value;
+    pmic_result_t res = pmic_read_reg(0x05, &value.raw);
+    if (current < 64) {
+        current = 64;
+    }
+    value.iprechg = 0;
+    current -= 64;  // Offset
+    if (current > 512) {
+        current -= 512;
+        value.iprechg |= (1 << 3);
+    }
+    if (current > 256) {
+        current -= 256;
+        value.iprechg |= (1 << 2);
+    }
+    if (current > 128) {
+        current -= 128;
+        value.iprechg |= (1 << 1);
+    }
+    if (current > 64) {
+        current -= 64;
+        value.iprechg |= (1 << 0);
+    }
+    if (res != pmic_ok) return res;
+    return pmic_write_reg(0x05, value.raw);
 }
 
 pmic_result_t pmic_get_precharge_current(uint16_t* out_current) {
-    return pmic_error;
+    bq25895_reg05_t value;
+    pmic_result_t res = pmic_read_reg(0x05, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_current) {
+        uint16_t current = 64;
+        if (value.iprechg & (1 << 3)) {
+            current += 512;
+        }
+        if (value.iprechg & (1 << 2)) {
+            current += 256;
+        }
+        if (value.iprechg & (1 << 1)) {
+            current += 128;
+        }
+        if (value.iprechg & (1 << 0)) {
+            current += 64;
+        }
+        *out_current = current;
+    }
+    return pmic_ok;
 }
 
 // REG06
-pmic_result_t pmic_set_recharge_threshold_200mv_offset(bool enable) {
-    return pmic_error;
+pmic_result_t pmic_set_charge_recharge_threshold_200mv_offset(bool enable) {
+    // Battery recharge threshold offset
+    // 100mV below target voltage if disabled, 200mV if enabled
+    bq25895_reg06_t value;
+    pmic_result_t res = pmic_read_reg(0x06, &value.raw);
+    if (res != pmic_ok) return res;
+    value.vrechg = enable;
+    return pmic_write_reg(0x06, value.raw);
 }
 
-pmic_result_t pmic_get_recharge_threshold_200mv_offset(bool* out_enable) {
-    return pmic_error;
+pmic_result_t pmic_get_charge_recharge_threshold_200mv_offset(bool* out_enable) {
+    // Battery recharge threshold offset
+    // 100mV below target voltage if disabled, 200mV if enabled
+    bq25895_reg06_t value;
+    pmic_result_t res = pmic_read_reg(0x06, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_enable) {
+        *out_enable = value.vrechg;
+    }
+    return pmic_ok;
 }
 
-pmic_result_t pmic_set_battery_precharge_threshold_3v(bool enable) {
-    return pmic_error;
+pmic_result_t pmic_set_charge_battery_precharge_threshold_3v(bool enable) {
+    // Threshold between precharge and fast charge
+    // 2.8v if disabled, 3v if enabled
+    bq25895_reg06_t value;
+    pmic_result_t res = pmic_read_reg(0x06, &value.raw);
+    if (res != pmic_ok) return res;
+    value.batlowv = enable;
+    return pmic_write_reg(0x06, value.raw);
 }
 
-pmic_result_t pmic_get_battery_precharge_threshold_3v(bool* out_enable) {
-    return pmic_error;
+pmic_result_t pmic_get_charge_battery_precharge_threshold_3v(bool* out_enable) {
+    // Threshold between precharge and fast charge
+    // 2.8v if disabled, 3v if enabled
+    bq25895_reg06_t value;
+    pmic_result_t res = pmic_read_reg(0x06, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_enable) {
+        *out_enable = value.batlowv;
+    }
+    return pmic_ok;
 }
 
 pmic_result_t pmic_set_charge_voltage_limit(uint16_t voltage) {
-    return pmic_error;
+    bq25895_reg06_t value;
+    pmic_result_t res = pmic_read_reg(0x06, &value.raw);
+    if (res != pmic_ok) return res;
+    value.vreg = 0;
+    if (voltage < 3840) {
+        voltage = 3840;
+    }
+    voltage -= 3840;  // Offset
+    if (voltage > 512) {
+        voltage -= 512;
+        value.vreg |= (1 << 5);
+    }
+    if (voltage > 256) {
+        voltage -= 256;
+        value.vreg |= (1 << 4);
+    }
+    if (voltage > 128) {
+        voltage -= 128;
+        value.vreg |= (1 << 3);
+    }
+    if (voltage > 64) {
+        voltage -= 64;
+        value.vreg |= (1 << 2);
+    }
+    if (voltage > 32) {
+        voltage -= 32;
+        value.vreg |= (1 << 1);
+    }
+    if (voltage > 16) {
+        voltage -= 16;
+        value.vreg |= (1 << 0);
+    }
+    return pmic_write_reg(0x06, value.raw);
 }
 
 pmic_result_t pmic_get_charge_voltage_limit(uint16_t* out_voltage) {
-    return pmic_error;
-}
-
-void pmic_battery_threshold(uint16_t voltage_limit, bool batlowv, bool vrechg) {
-    const uint8_t reg = 0x06;
-    uint8_t value = 0;
-
-    if (voltage_limit < 3840) {
-        voltage_limit = 3840;
+    bq25895_reg06_t value;
+    pmic_result_t res = pmic_read_reg(0x06, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_voltage) {
+        uint16_t voltage = 3840;
+        if (value.vreg & (1 << 5)) {
+            voltage += 512;
+        }
+        if (value.vreg & (1 << 4)) {
+            voltage += 256;
+        }
+        if (value.vreg & (1 << 3)) {
+            voltage += 128;
+        }
+        if (value.vreg & (1 << 2)) {
+            voltage += 64;
+        }
+        if (value.vreg & (1 << 1)) {
+            voltage += 32;
+        }
+        if (value.vreg & (1 << 0)) {
+            voltage += 16;
+        }
     }
-    voltage_limit -= 3840;  // Offset
-    if (voltage_limit > 512) {
-        voltage_limit -= 512;
-        value |= (1 << 7);  // Add 512mA
-    }
-    if (voltage_limit > 256) {
-        voltage_limit -= 256;
-        value |= (1 << 6);  // Add 256mA
-    }
-    if (voltage_limit > 128) {
-        voltage_limit -= 128;
-        value |= (1 << 5);  // Add 128mA
-    }
-    if (voltage_limit > 64) {
-        voltage_limit -= 64;
-        value |= (1 << 4);  // Add 64mA
-    }
-    if (voltage_limit > 32) {
-        voltage_limit -= 32;
-        value |= (1 << 3);  // Add 32mA
-    }
-    if (voltage_limit > 16) {
-        voltage_limit -= 16;
-        value |= (1 << 2);  // Add 16mA
-    }
-    if (batlowv) {
-        value |= (1 << 1);  // Battery precharge to fast charge threshold: 1 is 3.0v (default), 0 is 2.8v
-    }
-    if (vrechg) {
-        value |= (1 << 0);  // Battery recharge threshold offset: 1 is 200mV below VREG, 0 is 100mV below VREG (default)
-    }
-    pm_i2c_write_reg(0x6a, reg, &value, 1);
+    return pmic_ok;
 }
 
 // REG07
 pmic_result_t pmic_set_charge_timer_limit(uint8_t hours) {
-    return pmic_error;
+    bq25895_reg07_t value;
+    pmic_result_t res = pmic_read_reg(0x07, &value.raw);
+    if (res != pmic_ok) return res;
+    value.chg_timer = 0;
+    if (hours >= 20) {
+        value.chg_timer = 3;
+    } else if (hours >= 12) {
+        value.chg_timer = 2;
+    } else if (hours >= 8) {
+        value.chg_timer = 1;
+    }
+    return pmic_write_reg(0x07, value.raw);
 }
 
 pmic_result_t pmic_get_charge_timer_limit(uint8_t* out_hours) {
-    return pmic_error;
+    bq25895_reg07_t value;
+    pmic_result_t res = pmic_read_reg(0x07, &value.raw);
+    if (out_hours) {
+        if (value.chg_timer == 1) {
+            *out_hours = 8;
+        } else if (value.chg_timer == 2) {
+            *out_hours = 12;
+        } else if (value.chg_timer == 3) {
+            *out_hours = 20;
+        } else {
+            *out_hours = 5;
+        }
+    }
+    if (res != pmic_ok) return res;
+    return pmic_ok;
 }
 
-pmic_result_t pmic_set_charge_timer_enable(bool enable) {
-    return pmic_error;
+pmic_result_t pmic_set_charge_safety_timer_enable(bool enable) {
+    bq25895_reg07_t value;
+    pmic_result_t res = pmic_read_reg(0x07, &value.raw);
+    if (res != pmic_ok) return res;
+    value.en_timer = enable;
+    return pmic_write_reg(0x07, value.raw);
 }
 
-pmic_result_t pmic_get_charge_timer_enable(bool* out_enable) {
-    return pmic_error;
+pmic_result_t pmic_get_charge_safety_timer_enable(bool* out_enable) {
+    bq25895_reg07_t value;
+    pmic_result_t res = pmic_read_reg(0x07, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_enable) {
+        *out_enable = value.en_timer;
+    }
+    return pmic_ok;
 }
 
 pmic_result_t pmic_set_watchdog_timer_limit(uint8_t seconds) {
-    return pmic_error;
+    // Set to zero to disable the watchdog timer
+    bq25895_reg07_t value;
+    pmic_result_t res = pmic_read_reg(0x07, &value.raw);
+    if (res != pmic_ok) return res;
+    value.watchdog = 0;  // Disable
+    if (seconds >= 160) {
+        value.watchdog = 3;
+    } else if (seconds >= 80) {
+        value.watchdog = 2;
+    } else if (seconds >= 40) {
+        value.watchdog = 1;
+    }
+    return pmic_write_reg(0x07, value.raw);
 }
 
 pmic_result_t pmic_get_watchdog_timer_limit(uint8_t* out_seconds) {
-    return pmic_error;
+    bq25895_reg07_t value;
+    pmic_result_t res = pmic_read_reg(0x07, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_seconds) {
+        if (value.watchdog == 1) {
+            *out_seconds = 40;
+        } else if (value.watchdog == 2) {
+            *out_seconds = 80;
+        } else if (value.watchdog == 3) {
+            *out_seconds = 160;
+        } else {
+            *out_seconds = 0;
+        }
+    }
+    return pmic_ok;
 }
 
 pmic_result_t pmic_set_status_pin_disable(bool disable) {
-    return pmic_error;
+    bq25895_reg07_t value;
+    pmic_result_t res = pmic_read_reg(0x07, &value.raw);
+    if (res != pmic_ok) return res;
+    value.stat_dis = disable;
+    return pmic_write_reg(0x07, value.raw);
 }
 
 pmic_result_t pmic_get_status_pin_disable(bool* out_disable) {
-    return pmic_error;
+    bq25895_reg07_t value;
+    pmic_result_t res = pmic_read_reg(0x07, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_disable) {
+        *out_disable = value.stat_dis;
+    }
+    return pmic_ok;
 }
 
 pmic_result_t pmic_set_charge_termination_enable(bool enable) {
-    return pmic_error;
+    bq25895_reg07_t value;
+    pmic_result_t res = pmic_read_reg(0x07, &value.raw);
+    if (res != pmic_ok) return res;
+    value.en_term = enable;
+    return pmic_write_reg(0x07, value.raw);
 }
 
 pmic_result_t pmic_get_charge_termination_enable(bool* out_enable) {
-    return pmic_error;
-}
-
-void pmic_watchdog(uint8_t watchdog_setting) {
-    const uint8_t reg = 0x07;
-    uint8_t value = 0x00;
-    pm_i2c_read_reg(0x6a, reg, &value, 1);
-    value &= ~(0b00110000);
-    value |= (watchdog_setting & 3) << 4;  // Watchdog
-    pm_i2c_write_reg(0x6a, reg, &value, 1);
+    bq25895_reg07_t value;
+    pmic_result_t res = pmic_read_reg(0x07, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_enable) {
+        *out_enable = value.en_term;
+    }
+    return pmic_ok;
 }
 
 // REG08
 pmic_result_t pmic_set_thermal_regulation_threshold(uint8_t temperature) {
-    return pmic_error;
+    bq25895_reg08_t value;
+    pmic_result_t res = pmic_read_reg(0x08, &value.raw);
+    if (res != pmic_ok) return res;
+    value.treg = 0;  // 60 degrees
+    if (temperature >= 120) {
+        value.treg = 3;
+    } else if (temperature >= 100) {
+        value.treg = 2;
+    } else if (temperature >= 80) {
+        value.treg = 1;
+    }
+    return pmic_write_reg(0x08, value.raw);
 }
 
 pmic_result_t pmic_get_thermal_regulation_threshold(uint8_t* out_temperature) {
-    return pmic_error;
+    bq25895_reg08_t value;
+    pmic_result_t res = pmic_read_reg(0x08, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_temperature) {
+        if (value.treg == 1) {
+            *out_temperature = 80;
+        } else if (value.treg == 2) {
+            *out_temperature = 100;
+        } else if (value.treg == 3) {
+            *out_temperature = 120;
+        } else {
+            *out_temperature = 60;
+        }
+    }
+    return pmic_ok;
 }
 
-pmic_result_t pmic_set_ir_compensation_voltage_clamp(uint8_t millivolt) {
-    return pmic_error;
+pmic_result_t pmic_set_ir_compensation_voltage_clamp(uint16_t millivolt) {
+    bq25895_reg08_t value;
+    pmic_result_t res = pmic_read_reg(0x08, &value.raw);
+    if (res != pmic_ok) return res;
+    value.vclamp = 0;
+    if (millivolt >= 128) {
+        millivolt -= 128;
+        value.vclamp |= (1 << 2);
+    }
+    if (millivolt >= 64) {
+        millivolt -= 64;
+        value.vclamp |= (1 << 1);
+    }
+    if (millivolt >= 32) {
+        millivolt -= 32;
+        value.vclamp |= (1 << 0);
+    }
+    return pmic_write_reg(0x08, value.raw);
 }
 
-pmic_result_t pmic_get_ir_compensation_voltage_clamp(uint8_t* out_millivolt) {
-    return pmic_error;
+pmic_result_t pmic_get_ir_compensation_voltage_clamp(uint16_t* out_millivolt) {
+    bq25895_reg08_t value;
+    pmic_result_t res = pmic_read_reg(0x08, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_millivolt) {
+        *out_millivolt = 0;
+        if (value.vclamp & (1 << 2)) {
+            *out_millivolt += 128;
+        }
+        if (value.vclamp & (1 << 1)) {
+            *out_millivolt += 64;
+        }
+        if (value.vclamp & (1 << 0)) {
+            *out_millivolt += 32;
+        }
+    }
+    return pmic_ok;
 }
 
-pmic_result_t pmic_set_ir_compensation_resistor_setting(uint8_t milliohm) {
-    return pmic_error;
+pmic_result_t pmic_set_ir_compensation_resistor_setting(uint16_t milliohm) {
+    bq25895_reg08_t value;
+    pmic_result_t res = pmic_read_reg(0x08, &value.raw);
+    if (res != pmic_ok) return res;
+    value.bat_comp = 0;
+    if (milliohm >= 80) {
+        milliohm -= 80;
+        value.bat_comp |= (1 << 2);
+    }
+    if (milliohm >= 40) {
+        milliohm -= 40;
+        value.bat_comp |= (1 << 1);
+    }
+    if (milliohm >= 20) {
+        milliohm -= 20;
+        value.bat_comp |= (1 << 0);
+    }
+    return pmic_write_reg(0x08, value.raw);
 }
 
-pmic_result_t pmic_get_ir_compensation_resistor_setting(uint8_t* out_milliohm) {
-    return pmic_error;
+pmic_result_t pmic_get_ir_compensation_resistor_setting(uint16_t* out_milliohm) {
+    bq25895_reg08_t value;
+    pmic_result_t res = pmic_read_reg(0x08, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_milliohm) {
+        *out_milliohm = 0;
+        if (value.bat_comp & (1 << 2)) {
+            *out_milliohm += 80;
+        }
+        if (value.bat_comp & (1 << 1)) {
+            *out_milliohm += 40;
+        }
+        if (value.bat_comp & (1 << 0)) {
+            *out_milliohm += 20;
+        }
+    }
+    return pmic_ok;
 }
 
 // REG09
 pmic_result_t pmic_set_pumpx_down_enable(bool enable) {
-    return pmic_error;
+    bq25895_reg09_t value;
+    pmic_result_t res = pmic_read_reg(0x09, &value.raw);
+    if (res != pmic_ok) return res;
+    value.pumpx_dn = enable;
+    return pmic_write_reg(0x09, value.raw);
 }
 
 pmic_result_t pmic_get_pumpx_down_enable(bool* out_enable) {
-    return pmic_error;
+    bq25895_reg09_t value;
+    pmic_result_t res = pmic_read_reg(0x09, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_enable) {
+        *out_enable = value.pumpx_dn;
+    }
+    return pmic_ok;
 }
 
 pmic_result_t pmic_set_pumpx_up_enable(bool enable) {
-    return pmic_error;
+    bq25895_reg09_t value;
+    pmic_result_t res = pmic_read_reg(0x09, &value.raw);
+    if (res != pmic_ok) return res;
+    value.pumpx_up = enable;
+    return pmic_write_reg(0x09, value.raw);
 }
 
 pmic_result_t pmic_get_pumpx_up_enable(bool* out_enable) {
-    return pmic_error;
+    bq25895_reg09_t value;
+    pmic_result_t res = pmic_read_reg(0x09, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_enable) {
+        *out_enable = value.pumpx_up;
+    }
+    return pmic_ok;
 }
 
 pmic_result_t pmic_set_battery_full_system_reset_enable(bool enable) {
-    return pmic_error;
+    bq25895_reg09_t value;
+    pmic_result_t res = pmic_read_reg(0x09, &value.raw);
+    if (res != pmic_ok) return res;
+    value.batfet_rst_en = enable;
+    return pmic_write_reg(0x09, value.raw);
 }
 
 pmic_result_t pmic_get_battery_full_system_reset_enable(bool* out_enable) {
-    return pmic_error;
+    bq25895_reg09_t value;
+    pmic_result_t res = pmic_read_reg(0x09, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_enable) {
+        *out_enable = value.batfet_rst_en;
+    }
+    return pmic_ok;
 }
 
 pmic_result_t pmic_set_battery_disconnect_delay_enable(bool enable) {
-    return pmic_error;
+    bq25895_reg09_t value;
+    pmic_result_t res = pmic_read_reg(0x09, &value.raw);
+    if (res != pmic_ok) return res;
+    value.batfet_dly = enable;
+    return pmic_write_reg(0x09, value.raw);
 }
 
 pmic_result_t pmic_get_battery_disconnect_delay_enable(bool* out_enable) {
-    return pmic_error;
+    bq25895_reg09_t value;
+    pmic_result_t res = pmic_read_reg(0x09, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_enable) {
+        *out_enable = value.batfet_dly;
+    }
+    return pmic_ok;
 }
 
-pmic_result_t pmic_set_battery_disconnect_enable(bool enable) {
-    return pmic_error;
+pmic_result_t pmic_set_battery_disconnect_enable(bool disconnect) {
+    bq25895_reg09_t value;
+    pmic_result_t res = pmic_read_reg(0x09, &value.raw);
+    if (res != pmic_ok) return res;
+    value.batfet_dis = disconnect;
+    return pmic_write_reg(0x09, value.raw);
 }
 
-pmic_result_t pmic_get_battery_disconnect_enable(bool* out_enable) {
-    return pmic_error;
+pmic_result_t pmic_get_battery_disconnect_enable(bool* out_disconnected) {
+    bq25895_reg09_t value;
+    pmic_result_t res = pmic_read_reg(0x09, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_disconnected) {
+        *out_disconnected = value.batfet_dis;
+    }
+    return pmic_ok;
 }
 
 pmic_result_t pmic_set_safety_timer_slow_2x_enable(bool enable) {
-    return pmic_error;
+    bq25895_reg09_t value;
+    pmic_result_t res = pmic_read_reg(0x09, &value.raw);
+    if (res != pmic_ok) return res;
+    value.tmr2x_en = enable;
+    return pmic_write_reg(0x09, value.raw);
 }
 
 pmic_result_t pmic_get_safety_timer_slow_2x_enable(bool* out_enable) {
-    return pmic_error;
-}
-
-pmic_result_t pmic_set_force_ico_enable(bool enable) {
-    return pmic_error;
-}
-
-pmic_result_t pmic_get_force_ico_enable(bool* out_enable) {
-    return pmic_error;
-}
-
-void pmic_control_battery_connection(bool enable) {
-    const uint8_t reg = 0x09;
-    uint8_t value = 0x00;
-    pm_i2c_read_reg(0x6a, reg, &value, 1);
-    if (!enable) {
-        value |= (1 << 5);  // Set BATFET_DIS bit
-    } else {
-        value &= (~1 << 5);  // Clear BATFET_DIS bit
+    bq25895_reg09_t value;
+    pmic_result_t res = pmic_read_reg(0x09, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_enable) {
+        *out_enable = value.tmr2x_en;
     }
-    pm_i2c_write_reg(0x6a, reg, &value, 1);
+    return pmic_ok;
+}
+
+pmic_result_t pmic_set_force_ico_enable(bool force) {
+    bq25895_reg09_t value;
+    pmic_result_t res = pmic_read_reg(0x09, &value.raw);
+    if (res != pmic_ok) return res;
+    value.force_ico = force;
+    return pmic_write_reg(0x09, value.raw);
+}
+
+pmic_result_t pmic_get_force_ico_enable(bool* out_forced) {
+    bq25895_reg09_t value;
+    pmic_result_t res = pmic_read_reg(0x09, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_forced) {
+        *out_forced = value.force_ico;
+    }
+    return pmic_ok;
+}
+
+// REG0A
+pmic_result_t pmic_set_boost_mode_voltage(uint16_t millivolt) {
+    bq25895_reg0A_t value;
+    pmic_result_t res = pmic_read_reg(0x0A, &value.raw);
+    if (res != pmic_ok) return res;
+    value.boostv = 0;
+    if (millivolt < 4550) {
+        millivolt = 4550;
+    }
+    millivolt -= 4550;  // Offset
+    if (millivolt >= 512) {
+        millivolt -= 512;
+        value.boostv |= (1 << 3);
+    }
+    if (millivolt >= 256) {
+        millivolt -= 256;
+        value.boostv |= (1 << 2);
+    }
+    if (millivolt >= 128) {
+        millivolt -= 128;
+        value.boostv |= (1 << 1);
+    }
+    if (millivolt >= 64) {
+        millivolt -= 64;
+        value.boostv |= (1 << 0);
+    }
+    return pmic_write_reg(0x0A, value.raw);
+}
+
+pmic_result_t pmic_get_boost_mode_voltage(uint16_t* out_millivolt) {
+    bq25895_reg0A_t value;
+    pmic_result_t res = pmic_read_reg(0x0A, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_millivolt) {
+        *out_millivolt = 4550;
+        if (value.boostv & (1 << 3)) {
+            *out_millivolt += 512;
+        }
+        if (value.boostv & (1 << 2)) {
+            *out_millivolt += 256;
+        }
+        if (value.boostv & (1 << 1)) {
+            *out_millivolt += 128;
+        }
+        if (value.boostv & (1 << 0)) {
+            *out_millivolt += 64;
+        }
+    }
+    return pmic_ok;
+}
+
+// REG0B
+pmic_result_t pmic_get_vsys_regulation_status(bool* out_active) {
+    bq25895_reg0B_t value;
+    pmic_result_t res = pmic_read_reg(0x0B, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_active) {
+        *out_active = value.vsys_stat;
+    }
+    return pmic_ok;
+}
+
+pmic_result_t pmic_get_usb_input_sdp_status(bool* out_usb500) {
+    bq25895_reg0B_t value;
+    pmic_result_t res = pmic_read_reg(0x0B, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_usb500) {
+        *out_usb500 = value.sdp_stat;
+    }
+    return pmic_ok;
+}
+
+pmic_result_t pmic_get_power_good_status(bool* out_active) {
+    bq25895_reg0B_t value;
+    pmic_result_t res = pmic_read_reg(0x0B, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_active) {
+        *out_active = value.pg_stat;
+    }
+    return pmic_ok;
+}
+
+pmic_result_t pmic_get_charging_status(pmic_charge_status_t* out_status) {
+    bq25895_reg0B_t value;
+    pmic_result_t res = pmic_read_reg(0x0B, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_status) {
+        *out_status = (pmic_charge_status_t)value.chrg_stat;
+    }
+    return pmic_ok;
+}
+
+pmic_result_t pmic_get_vbus_status(pmic_vbus_status_t* out_status) {
+    bq25895_reg0B_t value;
+    pmic_result_t res = pmic_read_reg(0x0B, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_status) {
+        *out_status = (pmic_vbus_status_t)value.vbus_stat;
+    }
+    return pmic_ok;
 }
 
 // REG0C
-pmic_result_t pmic_read_faults(uint8_t* out_raw, pmic_faults_t* out_faults) {
+pmic_result_t pmic_get_faults(uint8_t* out_raw, pmic_faults_t* out_faults) {
     bq25895_reg0C_t value = {0};
     pmic_result_t res = pmic_read_reg(0x0C, &value.raw);
     if (res != pmic_ok) return res;
@@ -676,22 +1124,112 @@ pmic_result_t pmic_read_faults(uint8_t* out_raw, pmic_faults_t* out_faults) {
     return pmic_ok;
 }
 
+// REG0D
+pmic_result_t pmic_set_vindpm(uint16_t millivolt) {
+    bq25895_reg0D_t value;
+    pmic_result_t res = pmic_read_reg(0x0D, &value.raw);
+    if (res != pmic_ok) return res;
+    value.vindpm = 0;
+    if (millivolt < 2600) {
+        millivolt = 2600;
+    }
+    millivolt -= 2600;
+    if (millivolt >= 6400) {
+        millivolt -= 6400;
+        value.vindpm |= (1 << 6);
+    }
+    if (millivolt >= 3200) {
+        millivolt -= 3200;
+        value.vindpm |= (1 << 5);
+    }
+    if (millivolt >= 1600) {
+        millivolt -= 1600;
+        value.vindpm |= (1 << 4);
+    }
+    if (millivolt >= 800) {
+        millivolt -= 800;
+        value.vindpm |= (1 << 3);
+    }
+    if (millivolt >= 400) {
+        millivolt -= 400;
+        value.vindpm |= (1 << 2);
+    }
+    if (millivolt >= 200) {
+        millivolt -= 200;
+        value.vindpm |= (1 << 1);
+    }
+    if (millivolt >= 100) {
+        millivolt -= 100;
+        value.vindpm |= (1 << 0);
+    }
+    return pmic_write_reg(0x0D, value.raw);
+}
+
+pmic_result_t pmic_get_vindpm(uint16_t* out_millivolt) {
+    bq25895_reg0D_t value;
+    pmic_result_t res = pmic_read_reg(0x0D, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_millivolt) {
+        *out_millivolt = 2600;
+        if (value.vindpm & (1 << 6)) {
+            *out_millivolt += 6400;
+        }
+        if (value.vindpm & (1 << 5)) {
+            *out_millivolt += 3200;
+        }
+        if (value.vindpm & (1 << 4)) {
+            *out_millivolt += 1600;
+        }
+        if (value.vindpm & (1 << 3)) {
+            *out_millivolt += 800;
+        }
+        if (value.vindpm & (1 << 2)) {
+            *out_millivolt += 400;
+        }
+        if (value.vindpm & (1 << 1)) {
+            *out_millivolt += 200;
+        }
+        if (value.vindpm & (1 << 0)) {
+            *out_millivolt += 100;
+        }
+    }
+    return pmic_ok;
+}
+
+pmic_result_t pmic_set_force_vindpm(bool absolute) {
+    bq25895_reg0D_t value;
+    pmic_result_t res = pmic_read_reg(0x0D, &value.raw);
+    if (res != pmic_ok) return res;
+    value.force_vindpm = absolute;
+    return pmic_write_reg(0x0D, value.raw);
+}
+
+pmic_result_t pmic_get_force_vindpm(bool* out_absolute) {
+    bq25895_reg0D_t value;
+    pmic_result_t res = pmic_read_reg(0x0D, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_absolute) {
+        *out_absolute = value.force_vindpm;
+    }
+    return pmic_ok;
+}
+
 // REG0E
-pmic_result_t pmic_adc_read_batv(uint16_t* out_batv, bool* out_therm_stat) {
+pmic_result_t pmic_get_adc_vbat(uint16_t* out_vbat, bool* out_therm_stat) {
     bq25895_reg0E_t value;
     pmic_result_t res = pmic_read_reg(0x0E, &value.raw);
     if (res != pmic_ok) return res;
 
-    if (out_batv) {
-        uint16_t batv = 2304;
-        if ((value.batv >> 6) & 1) batv += 1280;
-        if ((value.batv >> 5) & 1) batv += 640;
-        if ((value.batv >> 4) & 1) batv += 320;
-        if ((value.batv >> 3) & 1) batv += 160;
-        if ((value.batv >> 2) & 1) batv += 80;
-        if ((value.batv >> 1) & 1) batv += 40;
-        if ((value.batv >> 0) & 1) batv += 20;
-        *out_batv = batv;
+    if (out_vbat) {
+        uint16_t vbat = 2304;
+        if ((value.vbat >> 6) & 1) vbat += 1280;
+        if ((value.vbat >> 5) & 1) vbat += 640;
+        if ((value.vbat >> 4) & 1) vbat += 320;
+        if ((value.vbat >> 3) & 1) vbat += 160;
+        if ((value.vbat >> 2) & 1) vbat += 80;
+        if ((value.vbat >> 1) & 1) vbat += 40;
+        if ((value.vbat >> 0) & 1) vbat += 20;
+        *out_vbat = vbat;
     }
 
     if (out_therm_stat) {
@@ -701,29 +1239,39 @@ pmic_result_t pmic_adc_read_batv(uint16_t* out_batv, bool* out_therm_stat) {
     return pmic_ok;
 }
 
+pmic_result_t pmic_get_thermal_regulation_status(bool* out_therm_stat) {
+    bq25895_reg0E_t value;
+    pmic_result_t res = pmic_read_reg(0x0E, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_therm_stat) {
+        *out_therm_stat = value.therm_stat;
+    }
+    return pmic_ok;
+}
+
 // REG0F
-pmic_result_t pmic_adc_read_sysv(uint16_t* out_sysv) {
+pmic_result_t pmic_get_adc_vsys(uint16_t* out_vsys) {
     bq25895_reg0F_t value;
     pmic_result_t res = pmic_read_reg(0x0F, &value.raw);
     if (res != pmic_ok) return res;
 
-    if (out_sysv) {
-        uint16_t sysv = 2304;
-        if ((value.sysv >> 6) & 1) sysv += 1280;
-        if ((value.sysv >> 5) & 1) sysv += 640;
-        if ((value.sysv >> 4) & 1) sysv += 320;
-        if ((value.sysv >> 3) & 1) sysv += 160;
-        if ((value.sysv >> 2) & 1) sysv += 80;
-        if ((value.sysv >> 1) & 1) sysv += 40;
-        if ((value.sysv >> 0) & 1) sysv += 20;
-        *out_sysv = sysv;
+    if (out_vsys) {
+        uint16_t vsys = 2304;
+        if ((value.vsys >> 6) & 1) vsys += 1280;
+        if ((value.vsys >> 5) & 1) vsys += 640;
+        if ((value.vsys >> 4) & 1) vsys += 320;
+        if ((value.vsys >> 3) & 1) vsys += 160;
+        if ((value.vsys >> 2) & 1) vsys += 80;
+        if ((value.vsys >> 1) & 1) vsys += 40;
+        if ((value.vsys >> 0) & 1) vsys += 20;
+        *out_vsys = vsys;
     }
 
     return pmic_ok;
 }
 
 // REG10
-pmic_result_t pmic_adc_read_tspct(uint16_t* out_tspct) {
+pmic_result_t pmic_get_adc_tspct(uint16_t* out_tspct) {
     // Divide the output of this function by 100 to get the percentage
     bq25895_reg10_t value;
     pmic_result_t res = pmic_read_reg(0x10, &value.raw);
@@ -745,32 +1293,42 @@ pmic_result_t pmic_adc_read_tspct(uint16_t* out_tspct) {
 }
 
 // REG11
-pmic_result_t pmic_adc_read_busv(uint16_t* out_busv, bool* out_busv_gd) {
+pmic_result_t pmic_get_adc_vbus(uint16_t* out_vbus, bool* out_vbus_gd) {
     bq25895_reg11_t value;
     pmic_result_t res = pmic_read_reg(0x11, &value.raw);
     if (res != pmic_ok) return res;
 
-    if (out_busv) {
-        uint16_t busv = 2600;
-        if ((value.busv >> 6) & 1) busv += 6400;
-        if ((value.busv >> 5) & 1) busv += 3200;
-        if ((value.busv >> 4) & 1) busv += 1600;
-        if ((value.busv >> 3) & 1) busv += 800;
-        if ((value.busv >> 2) & 1) busv += 400;
-        if ((value.busv >> 1) & 1) busv += 200;
-        if ((value.busv >> 0) & 1) busv += 100;
-        *out_busv = busv;
+    if (out_vbus) {
+        uint16_t vbus = 2600;
+        if ((value.vbus >> 6) & 1) vbus += 6400;
+        if ((value.vbus >> 5) & 1) vbus += 3200;
+        if ((value.vbus >> 4) & 1) vbus += 1600;
+        if ((value.vbus >> 3) & 1) vbus += 800;
+        if ((value.vbus >> 2) & 1) vbus += 400;
+        if ((value.vbus >> 1) & 1) vbus += 200;
+        if ((value.vbus >> 0) & 1) vbus += 100;
+        *out_vbus = vbus;
     }
 
-    if (out_busv_gd) {
-        *out_busv_gd = value.busv_gd;
+    if (out_vbus_gd) {
+        *out_vbus_gd = value.vbus_gd;
     }
 
     return pmic_ok;
 }
 
+pmic_result_t pmic_get_vbus_good(bool* out_vbus_gd) {
+    bq25895_reg11_t value;
+    pmic_result_t res = pmic_read_reg(0x11, &value.raw);
+    if (res != pmic_ok) return res;
+    if (out_vbus_gd) {
+        *out_vbus_gd = value.vbus_gd;
+    }
+    return pmic_ok;
+}
+
 // REG12
-pmic_result_t pmic_adc_read_ichgr(uint16_t* out_ichgr) {
+pmic_result_t pmic_get_adc_ichgr(uint16_t* out_ichgr) {
     bq25895_reg12_t value;
     pmic_result_t res = pmic_read_reg(0x12, &value.raw);
     if (res != pmic_ok) return res;
@@ -792,30 +1350,84 @@ pmic_result_t pmic_adc_read_ichgr(uint16_t* out_ichgr) {
 
 /////////////////////////////
 
-void pmic_power_off() {
-    pmic_watchdog(0);
-    pmic_set_adc_configuration(false, false);
-    pmic_set_otg_enable(false);
-    pmic_set_battery_load_enable(false);
-    pmic_control_battery_connection(false);
+pmic_result_t pmic_power_off() {
+    pmic_result_t res;
+    res = pmic_get_watchdog_timer_limit(0);
+    if (res != pmic_ok) return res;
+    res = pmic_set_adc_configuration(false, false);
+    if (res != pmic_ok) return res;
+    res = pmic_set_otg_enable(false);
+    if (res != pmic_ok) return res;
+    res = pmic_set_battery_load_enable(false);
+    if (res != pmic_ok) return res;
+    res = pmic_set_battery_disconnect_enable(true);
+    return res;
 }
 
-void pmic_battery_attached(bool* battery_attached, bool detect_empty_battery) {
+pmic_result_t pmic_battery_attached(bool* battery_attached, bool detect_empty_battery) {
+    pmic_result_t res;
     *battery_attached = false;
+    uint16_t vbatt = 0;
+    bool therm_stat = false;
 
     // Algorithm 1: detect battery with normal voltage
-    pmic_set_battery_load_enable(true);  // Apply 30mA load on battery
-    Delay_Ms(5);
-    uint16_t vbatt = 0;
-    pmic_adc_read_batv(&vbatt, NULL);
-    pmic_set_battery_load_enable(false);  // Disable 30mA load on battery
-    if (vbatt >= 3000) {
+    res = pmic_set_charge_enable(false);  // Disable charging
+    if (res != pmic_ok) return res;
+    res = pmic_set_battery_load_enable(true);  // Apply 30mA load on battery
+    if (res != pmic_ok) return res;
+    Delay_Ms(5);                                // Wait 5ms
+    res = pmic_set_battery_load_enable(false);  // Disable 30mA load on battery
+    if (res != pmic_ok) return res;
+    res = pmic_get_adc_vbat(&vbatt, &therm_stat);  // Measure battery voltage
+    if (res != pmic_ok) return res;
+    if (vbatt >= 3000 && (!therm_stat)) {  // Assume attached if battery voltage 3v or higher
         *battery_attached = true;
-        return;
+        return res;
+    } else if (therm_stat) {  // Battery temperature too high, ignore battery even if attached
+        return res;
     }
 
-    // Algorithm 2: detect empty battery
+    // Algorithm 2: detect empty battery by forcing closing of protection circuit
     if (detect_empty_battery) {
-        // to-do
+        res = pmic_set_minimum_system_voltage_limit(3700);  // Set minimum system voltage to 3.7v
+        if (res != pmic_ok) return res;
+        res = pmic_set_charge_voltage_limit(3700);  // Set charging end voltage to 3.7v
+        if (res != pmic_ok) return res;
+        res = pmic_set_charge_enable(true);  // Enable charging
+        Delay_Ms(50);                        // Wait 50ms
+        if (res != pmic_ok) return res;
+        res = pmic_set_charge_enable(false);  // Disable charging
+        if (res != pmic_ok) return res;
+        res = pmic_set_battery_load_enable(true);  // Apply 30mA load on battery
+        if (res != pmic_ok) return res;
+        Delay_Ms(5);                                // Wait 5ms
+        res = pmic_set_battery_load_enable(false);  // Disable 30mA load on battery
+        if (res != pmic_ok) return res;
+        res = pmic_get_adc_vbat(&vbatt, &therm_stat);  // Measure battery voltage
+        if (res != pmic_ok) return res;
+        res = pmic_set_minimum_system_voltage_limit(3500);  // Set minimum system voltage back to the default 3.5v
+        if (res != pmic_ok) return res;
+        if (vbatt >= 2800 && (!therm_stat)) {  // Assume attached if battery voltage 2.8v or higher
+            *battery_attached = true;
+            return res;
+        }
     }
+
+    return res;
+}
+
+pmic_result_t pmic_configure_battery_charger(bool enable) {
+    pmic_result_t res;
+    res = pmic_set_battery_load_enable(false);  // Disable 30mA load on battery
+    if (res != pmic_ok) return res;
+    if (enable) {
+        res = pmic_set_charge_voltage_limit(4200);  // Charge up to 4.2v
+        if (res != pmic_ok) return res;
+        res = pmic_set_charge_current_fast(2048);  // Charge at 2A maximum current
+        if (res != pmic_ok) return res;
+        res = pmic_set_charge_enable(true);  // Start charging
+    } else {
+        res = pmic_set_charge_enable(false);  // Stop charging
+    }
+    return res;
 }
