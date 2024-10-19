@@ -13,13 +13,13 @@
 #include "rtc.h"
 
 // Board revision
-#define HW_REV 1
+#define HW_REV 2
 
 // Firmware version
-#define FW_VERSION 5
+#define FW_VERSION 6
 
 #define OVERRIDE_C6  false
-#define HARDWARE_REV 2  // 1 for prototype 1, 2 for prototype 2
+#define HARDWARE_REV 1  // 1 for prototype 1, 2 for prototype 2
 
 // Pins
 const uint8_t pin_c6_enable = PB8;
@@ -655,8 +655,10 @@ int main() {
     // Backup registers
     bkp_read_all();
 
+#if HARDWARE_REV > 1
     bool power_button_latch = false;
     uint8_t power_button_counter = 0;
+#endif
 
     while (1) {
         i2c_registers[I2C_REG_FW_VERSION_0] = (FW_VERSION) & 0xFF;
@@ -682,6 +684,7 @@ int main() {
                 interrupt_set(false, true, false);
             }
 
+#if HARDWARE_REV > 1
             if (!funDigitalRead(pin_power_in)) {
                 if (power_button_latch && power_button_counter > 500 / input_scan_interval) {
                     pmic_power_off();
@@ -691,6 +694,7 @@ int main() {
                 power_button_latch = true;
                 power_button_counter = 0;
             }
+#endif
         }
 
         static uint32_t rtc_previous = 0;
@@ -714,17 +718,13 @@ int main() {
             }
         }*/
 
+#if HARDWARE_REV > 1
         static uint32_t pmic_previous = 0;
         if (now - pmic_previous >= 500 * DELAY_MS_TIME) {
             pmic_previous = now;
             pmic_task();
         }
-
-        static uint32_t test_previous = 0;
-        if (now - test_previous >= 1000 * DELAY_MS_TIME) {
-            test_previous = now;
-            printf("Hello world\r\n");
-        }
+#endif
 
         funDigitalWrite(pin_interrupt,
                         (keyboard_interrupt | input_interrupt | pmic_interrupt)
