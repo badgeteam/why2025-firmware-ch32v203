@@ -1420,14 +1420,14 @@ pmic_result_t pmic_battery_attached(bool* battery_attached, bool detect_empty_ba
     return res;
 }
 
-pmic_result_t pmic_configure_battery_charger(bool enable) {
+pmic_result_t pmic_configure_battery_charger(bool enable, uint16_t current) {
     pmic_result_t res;
     res = pmic_set_battery_load_enable(false);  // Disable 30mA load on battery
     if (res != PMIC_OK) return res;
     if (enable) {
         res = pmic_set_charge_voltage_limit(4200);  // Charge up to 4.2v
         if (res != PMIC_OK) return res;
-        res = pmic_set_charge_current_fast(2048);  // Charge at 2A maximum current
+        res = pmic_set_charge_current_fast(current);
         if (res != PMIC_OK) return res;
         res = pmic_set_charge_enable(true);  // Start charging
     } else {

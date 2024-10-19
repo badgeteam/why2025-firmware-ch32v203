@@ -170,7 +170,7 @@ typedef enum {
     I2C_REG_PMIC_ADC_VBUS_1,   // MSB
     I2C_REG_PMIC_ADC_ICHGR_0,  // LSB (value in mA)
     I2C_REG_PMIC_ADC_ICHGR_1,  // MSB
-    I2C_REG_PMIC_BATTERY_CONTROL,
+    I2C_REG_PMIC_CHARGING_CONTROL,
     I2C_REG_PMIC_CHARGING_STATUS,
     I2C_REG_PMIC_OTG_CONTROL,
     I2C_REG_LAST,  // End of list marker
@@ -187,6 +187,7 @@ volatile bool pmic_interrupt = false;
 volatile bool pmic_adc_trigger = false;
 volatile bool pmic_adc_continuous = false;
 volatile bool pmic_force_disable_charging = false;
+volatile uint16_t pmic_target_charging_current = 512;
 
 // Interrupts
 void interrupt_update_reg(void) {
@@ -366,9 +367,19 @@ void i2c_write_cb(uint8_t reg, uint8_t length) {
                 pmic_adc_continuous = (i2c_registers[I2C_REG_PMIC_ADC_CONTROL] & 2) >> 1;
                 break;
             }
-            case I2C_REG_PMIC_BATTERY_CONTROL:
-                pmic_force_disable_charging = (i2c_registers[I2C_REG_PMIC_BATTERY_CONTROL] & (1 << 0)) & 1;
+            case I2C_REG_PMIC_CHARGING_CONTROL: {
+                pmic_force_disable_charging = (i2c_registers[I2C_REG_PMIC_CHARGING_CONTROL] & (1 << 0)) & 1;
+                uint16_t target_current = 512;
+                uint8_t add_current = (i2c_registers[I2C_REG_PMIC_CHARGING_CONTROL] & (1 << 1)) & 3;
+                if (add_current & 1) {
+                    target_current += 512;
+                }
+                if (add_current & 2) {
+                    target_current += 1024;
+                }
+                pmic_target_charging_current = target_current;
                 break;
+            }
             case I2C_REG_PMIC_OTG_CONTROL:
                 set_pmic_status(pmic_set_otg_enable(i2c_registers[I2C_REG_PMIC_OTG_CONTROL] & 1));
                 break;
@@ -441,6 +452,7 @@ void pmic_task(void) {
     static bool vbus_attached = false;
     static bool battery_attached = false;
     static bool prev_force_disable_charging = false;
+    static uint16_t prev_pmic_target_charging_current = 0;
 
     pmic_result_t res;
 
@@ -545,20 +557,22 @@ void pmic_task(void) {
     if (pmic_force_disable_charging) {
         // Charging has been disabled by user
         if (!prev_force_disable_charging) {
-            res = pmic_configure_battery_charger(false);
+            res = pmic_configure_battery_charger(false, 0);
         }
         prev_force_disable_charging = pmic_force_disable_charging;
     } else {
-        if (!prev_vbus_attached && vbus_attached) {
+        if ((!prev_vbus_attached && vbus_attached) ||
+            (vbus_attached && (prev_pmic_target_charging_current != pmic_target_charging_current))) {
             //   Badge has been connected to USB supply
             pmic_battery_attached(&battery_attached, empty_battery_delay == 0);
-            pmic_configure_battery_charger(battery_attached);
+            pmic_configure_battery_charger(battery_attached, pmic_target_charging_current);
         } else if (prev_vbus_attached && !vbus_attached) {
             // Badge has been disconnected from USB supply
-            pmic_configure_battery_charger(false);  // Disable battery charging
+            pmic_configure_battery_charger(false, 0);  // Disable battery charging
         }
     }
     prev_vbus_attached = vbus_attached;
+    prev_pmic_target_charging_current = pmic_target_charging_current;
 
     uint8_t charging_status = 0;
     if (battery_attached) {
@@ -620,12 +634,12 @@ int main() {
     pmic_set_adc_configuration(false, false);     // Disable continuous ADC mode
 
     // Configure battery charger
-    pmic_set_charge_enable(false);                           // Disable battery charging
-    pmic_set_pumpx_enable(false);                            // Disable current pulse control
-    pmic_set_charge_voltage_limit(4208);                     // Charge to 4.2v
-    pmic_set_charge_current_fast(2048);                      // Charge with 2A maximum
-    pmic_set_charge_battery_precharge_threshold_3v(true);    // Switch from precharge to fast charge at 3v
-    pmic_set_charge_recharge_threshold_200mv_offset(false);  // Recharge when battery voltage is 100mV below target
+    pmic_set_charge_enable(false);                               // Disable battery charging
+    pmic_set_pumpx_enable(false);                                // Disable current pulse control
+    pmic_set_charge_voltage_limit(4208);                         // Charge to 4.2v
+    pmic_set_charge_current_fast(pmic_target_charging_current);  // Charge current
+    pmic_set_charge_battery_precharge_threshold_3v(true);        // Switch from precharge to fast charge at 3v
+    pmic_set_charge_recharge_threshold_200mv_offset(false);      // Recharge when battery voltage is 100mV below target
 
     pmic_set_otg_enable(true);  // Enable OTG booster (for testing)
 #endif

@@ -191,4 +191,4 @@ pmic_result_t pmic_register_reset(void);
 // Helper functions
 pmic_result_t pmic_power_off();
 pmic_result_t pmic_battery_attached(bool* battery_attached, bool detect_empty_battery);
-pmic_result_t pmic_configure_battery_charger(bool enable);
+pmic_result_t pmic_configure_battery_charger(bool enable, uint16_t current);
