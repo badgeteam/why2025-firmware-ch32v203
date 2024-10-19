@@ -1,3 +1,7 @@
+// Tanmatsu coprocessor firmware
+// SPDX-FileCopyrightText: 2024 Nicolai Electronics
+// SPDX-License-Identifier: MIT
+
 #include "keyboard.h"
 #include <stdbool.h>
 #include <stdint.h>

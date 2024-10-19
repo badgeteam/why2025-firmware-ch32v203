@@ -1,3 +1,7 @@
+// Tanmatsu coprocessor firmware
+// SPDX-FileCopyrightText: 2024 Nicolai Electronics
+// SPDX-License-Identifier: MIT
+
 #pragma once
 
 #include <stdbool.h>
