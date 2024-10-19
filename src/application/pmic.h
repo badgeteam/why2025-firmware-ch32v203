@@ -4,8 +4,8 @@
 #include <stdint.h>
 
 typedef enum {
-    pmic_ok = 0,
-    pmic_error = 1,
+    PMIC_OK = 0,
+    PMIC_ERROR = 1,
 } pmic_result_t;
 
 typedef struct {
@@ -143,7 +143,7 @@ pmic_result_t pmic_get_boost_mode_voltage(uint16_t* out_millivolt);
 pmic_result_t pmic_get_vsys_regulation_status(bool* out_active);
 pmic_result_t pmic_get_usb_input_sdp_status(bool* out_usb500);
 pmic_result_t pmic_get_power_good_status(bool* out_active);
-pmic_result_t pmic_get_charging_status(pmic_charge_status_t* out_status);
+pmic_result_t pmic_get_charge_status(pmic_charge_status_t* out_status);
 pmic_result_t pmic_get_vbus_status(pmic_vbus_status_t* out_status);
 
 // REG0C

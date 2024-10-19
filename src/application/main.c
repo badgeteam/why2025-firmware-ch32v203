@@ -20,7 +20,7 @@
 #define FW_VERSION 6
 
 #define OVERRIDE_C6  false
-#define HARDWARE_REV 1  // 1 for prototype 1, 2 for prototype 2
+#define HARDWARE_REV 2  // 1 for prototype 1, 2 for prototype 2
 
 // Pins
 const uint8_t pin_c6_enable = PB8;
@@ -31,9 +31,9 @@ const uint8_t pin_interrupt = PA0;
 const uint8_t pin_sdcard_detect = PA15;
 const uint8_t pin_headphone_detect = PB5;
 const uint8_t pin_amplifier_enable = PD0;
-// const uint8_t pin_power_out = PC13; // Output to power button (for powering on using the RTC alarm)
-const uint8_t pin_sda = PB7;  // Uses hardware I2C peripheral
-const uint8_t pin_scl = PB6;  // Uses hardware I2C peripheral
+const uint8_t pin_power_out = PC13;  // Output to power button (for powering on using the RTC alarm)
+const uint8_t pin_sda = PB7;         // Uses hardware I2C peripheral
+const uint8_t pin_scl = PB6;         // Uses hardware I2C peripheral
 
 #if HARDWARE_REV > 1
 const uint8_t pin_camera = PA11;
@@ -449,7 +449,7 @@ void pmic_task(void) {
     pmic_faults_t faults = {0};
     res = pmic_get_faults(&raw_faults, &faults);
     set_pmic_status(res);
-    if (res != pmic_ok) return;  // Stop on communication error
+    if (res != PMIC_OK) return;  // Stop on communication error
     uint8_t prev_raw_faults = i2c_registers[I2C_REG_PMIC_FAULT];
     i2c_registers[I2C_REG_PMIC_FAULT] = raw_faults;
     if (prev_raw_faults != raw_faults) {
@@ -460,35 +460,35 @@ void pmic_task(void) {
     if (adc_active || pmic_adc_continuous) {
         uint16_t adc_vbat = 0;
         res = pmic_get_adc_vbat(&adc_vbat, NULL);
-        if (res != pmic_ok) {
+        if (res != PMIC_OK) {
             set_pmic_status(res);
             return;  // Stop on communication error
         }
 
         uint16_t adc_vsys = 0;
         res = pmic_get_adc_vsys(&adc_vsys);
-        if (res != pmic_ok) {
+        if (res != PMIC_OK) {
             set_pmic_status(res);
             return;  // Stop on communication error
         }
 
         uint16_t adc_tspct = 0;
         res = pmic_get_adc_tspct(&adc_tspct);
-        if (res != pmic_ok) {
+        if (res != PMIC_OK) {
             set_pmic_status(res);
             return;  // Stop on communication error
         }
 
         // uint16_t adc_vbus = 0;
         // res = pmic_get_adc_vbus(&adc_vbus, NULL);
-        // if (res != pmic_ok) {
+        // if (res != PMIC_OK) {
         //    set_pmic_status(res);
         //    return;  // Stop on communication error
         //}
 
         uint16_t adc_ichgr = 0;
         res = pmic_get_adc_ichgr(&adc_ichgr);
-        if (res != pmic_ok) {
+        if (res != PMIC_OK) {
             set_pmic_status(res);
             return;  // Stop on communication error
         }
@@ -516,7 +516,7 @@ void pmic_task(void) {
     // ADC: trigger new conversion
     if (pmic_adc_trigger || prev_adc_contiuous != pmic_adc_continuous) {
         res = pmic_set_adc_configuration(pmic_adc_trigger, prev_adc_contiuous);
-        if (res != pmic_ok) {
+        if (res != PMIC_OK) {
             set_pmic_status(res);
             return;  // Stop on communication error
         }
@@ -568,8 +568,19 @@ void pmic_task(void) {
         charging_status |= (1 << 1);  // Bit 1: power input attached
     }
     if (pmic_force_disable_charging) {
-        charging_status |= (1 << 2);  // Bit 12: charging disabled by user
+        charging_status |= (1 << 2);  // Bit 2: charging disabled by user
     }
+
+    pmic_charge_status_t charge_status = PMIC_CHARGE_STATUS_NOT_CHARGING;
+    res = pmic_get_charge_status(&charge_status);
+    if (res != PMIC_OK) {
+        set_pmic_status(res);
+        return;  // Stop on communication error
+    }
+
+    charging_status |=
+        (((uint8_t)(charge_status) & 3) << 3);  // Charge status is two bits, put at bits 3 and 4 of the register
+
     i2c_registers[I2C_REG_PMIC_CHARGING_STATUS] = charging_status;
 }
 
@@ -600,7 +611,8 @@ int main() {
 
     // Configure USB power input
     pmic_set_input_current_limit(2048, true, false);  // Allow up to 2048mA to be sourced from the USB-C port
-    pmic_set_input_current_optimizer(true);  // Check input voltage and reduce current if supply insufficient for 2048mA
+    // pmic_set_input_current_optimizer(true);           // Reduce current if supply insufficient for 2048mA
+    pmic_set_input_current_optimizer(false);  // Take 2048mA regardless of the charger (workaround)
 
     // Configure other stuff
     pmic_set_battery_load_enable(false);          // Disable 30mA load on battery

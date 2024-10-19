@@ -51,12 +51,31 @@ void rtc_set_counter(uint32_t value) {
     rtc_disable_wp();
     rtc_enter_config();
     rtc_wait_for_last_task();
+    rtc_wait_for_sync();
     RTC->CNTH = value >> 16;
     RTC->CNTL = value & 0xFFFF;
     rtc_wait_for_last_task();
     rtc_exit_config();
     rtc_wait_for_last_task();
     rtc_enable_wp();
+}
+
+void rtc_set_alarm(uint32_t wakeup_time) {
+    rtc_disable_wp();
+    rtc_enter_config();
+    rtc_wait_for_last_task();
+    rtc_wait_for_sync();
+    RTC->ALRMH = wakeup_time >> 16;
+    RTC->ALRML = wakeup_time & 0xFFFF;
+    rtc_wait_for_last_task();
+    // RTC->CTLRH |= (1 << 1);  // Enable alarm interrupt
+    rtc_exit_config();
+    rtc_wait_for_last_task();
+    rtc_enable_wp();
+}
+
+void rtc_clear_alarm(void) {
+    // RTC->CTLRH &= ~(1 << 1);  // Disable alarm interrupt
 }
 
 uint32_t rtc_get_counter(void) {
