@@ -1,5 +1,6 @@
 // Tanmatsu coprocessor firmware
-// Copyright Nicolai Electronics 2024
+// Copyright (c) 2024 Nicolai Electronics
+// SPDX-License-Identifier: MIT
 
 #include <stdbool.h>
 #include <stdint.h>
