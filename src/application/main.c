@@ -187,6 +187,7 @@ volatile bool pmic_interrupt = false;
 volatile bool pmic_adc_trigger = false;
 volatile bool pmic_adc_continuous = false;
 volatile bool pmic_force_disable_charging = false;
+volatile bool pmic_force_detect_battery = false;
 volatile uint16_t pmic_target_charging_current = 512;
 
 // Interrupts
@@ -378,6 +379,7 @@ void i2c_write_cb(uint8_t reg, uint8_t length) {
                     target_current += 1024;
                 }
                 pmic_target_charging_current = target_current;
+                pmic_force_detect_battery = (i2c_registers[I2C_REG_PMIC_CHARGING_CONTROL] & (1 << 3)) & 1;
                 break;
             }
             case I2C_REG_PMIC_OTG_CONTROL:
@@ -565,7 +567,7 @@ void pmic_task(void) {
             (vbus_attached && (prev_pmic_target_charging_current != pmic_target_charging_current))) {
             //   Badge has been connected to USB supply
             pmic_battery_attached(&battery_attached, empty_battery_delay == 0);
-            pmic_configure_battery_charger(battery_attached, pmic_target_charging_current);
+            pmic_configure_battery_charger(battery_attached || pmic_force_detect_battery, pmic_target_charging_current);
         } else if (prev_vbus_attached && !vbus_attached) {
             // Badge has been disconnected from USB supply
             pmic_configure_battery_charger(false, 0);  // Disable battery charging
