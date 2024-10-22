@@ -445,6 +445,12 @@ void bkp_read_all(void) {
     }
 }
 
+void configure_usb_input(void) {
+    pmic_set_input_current_limit(2000, false, false);  // Allow up to 2000mA to be sourced from the USB-C port
+    // pmic_set_input_current_optimizer(true);           // Reduce current if supply insufficient for 2000mA
+    pmic_set_input_current_optimizer(false);  // Take 2000mA regardless of the charger (workaround)
+}
+
 void pmic_task(void) {
     // Periodic task for controlling PMIC
     static uint8_t empty_battery_delay = 4;
@@ -566,6 +572,7 @@ void pmic_task(void) {
         if ((!prev_vbus_attached && vbus_attached) ||
             (vbus_attached && (prev_pmic_target_charging_current != pmic_target_charging_current))) {
             //   Badge has been connected to USB supply
+            configure_usb_input();
             pmic_battery_attached(&battery_attached, empty_battery_delay == 0);
             pmic_configure_battery_charger(battery_attached || pmic_force_detect_battery, pmic_target_charging_current);
         } else if (prev_vbus_attached && !vbus_attached) {
@@ -620,15 +627,13 @@ int main() {
     SetupI2CMaster();
 
     // Disable PMIC I2C watchdog
-    pmic_get_watchdog_timer_limit(0);
+    pmic_set_watchdog_timer_limit(0);
 
     // Connect battery if previously disabled
     pmic_set_battery_disconnect_enable(false);
 
     // Configure USB power input
-    pmic_set_input_current_limit(2048, true, false);  // Allow up to 2048mA to be sourced from the USB-C port
-    // pmic_set_input_current_optimizer(true);           // Reduce current if supply insufficient for 2048mA
-    pmic_set_input_current_optimizer(false);  // Take 2048mA regardless of the charger (workaround)
+    configure_usb_input();
 
     // Configure other stuff
     pmic_set_battery_load_enable(false);          // Disable 30mA load on battery
