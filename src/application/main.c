@@ -17,7 +17,7 @@
 #define HW_REV 2
 
 // Firmware version
-#define FW_VERSION 6
+#define FW_VERSION 7
 
 #define OVERRIDE_C6  false
 #define HARDWARE_REV 2  // 1 for prototype 1, 2 for prototype 2
