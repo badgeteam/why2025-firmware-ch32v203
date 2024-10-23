@@ -13,6 +13,8 @@ target_link_libraries(${PROJECT_NAME}.elf
 	PUBLIC
 		platform
 		hal
+		freertos_kernel
+		freertos_config
 )
 
 add_custom_command(

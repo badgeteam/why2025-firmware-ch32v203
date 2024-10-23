@@ -6,12 +6,17 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include "FreeRTOS.h"
 #include "ch32v003fun.h"
 #include "i2c_master.h"
 #include "i2c_slave.h"
 #include "keyboard.h"
 #include "pmic.h"
+#include "queue.h"
 #include "rtc.h"
+#include "semphr.h"
+#include "task.h"
+#include "timers.h"
 
 // Board revision
 #define HW_REV 2
@@ -607,6 +612,19 @@ void pmic_task(void) {
     i2c_registers[I2C_REG_PMIC_CHARGING_STATUS] = charging_status;
 }
 
+static void exampleTask(void* parameters) {
+    /* Unused parameters. */
+    (void)parameters;
+
+    for (;;) {
+        /* Example Task Code */
+        timer3_set(255);
+        vTaskDelay(200);
+        timer3_set(0);
+        vTaskDelay(200);
+    }
+}
+
 // Entry point
 int main() {
     SystemInit();
@@ -693,6 +711,14 @@ int main() {
     bool power_button_latch = false;
     uint8_t power_button_counter = 0;
 #endif
+
+    static StaticTask_t exampleTaskTCB;
+    static StackType_t exampleTaskStack[configMINIMAL_STACK_SIZE];
+    xTaskCreateStatic(exampleTask, "example", configMINIMAL_STACK_SIZE, NULL, configMAX_PRIORITIES - 1U,
+                      &(exampleTaskStack[0]), &(exampleTaskTCB));
+
+    vTaskStartScheduler();
+    return 0;
 
     while (1) {
         i2c_registers[I2C_REG_FW_VERSION_0] = (FW_VERSION) & 0xFF;
